@@ -1006,16 +1006,20 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
 
             ui.label(egui::RichText::new(crate::i18n::t("Mönster:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
             let p_len = self.patterns.len();
-            for pat_idx in 0..p_len {
-                let is_active = self.selected_pattern == pat_idx;
-                let p_color = self.patterns[pat_idx].color;
-                let fill = if is_active { p_color } else { crate::ui::theme::palette().panel() };
-                let text_color = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
-                let btn_text = format!("{} {}", pat_idx + 1, self.patterns[pat_idx].name);
-                if ui.add(egui::Button::new(egui::RichText::new(btn_text).strong().size(Theme::FONT_S).color(text_color)).fill(fill)).clicked() {
-                    self.select_pattern(pat_idx);
+            // Many patterns wrap inside the bar; in one `horizontal` they ran past the
+            // right edge where the last ones could not be clicked.
+            ui.horizontal_wrapped(|ui| {
+                for pat_idx in 0..p_len {
+                    let is_active = self.selected_pattern == pat_idx;
+                    let p_color = self.patterns[pat_idx].color;
+                    let fill = if is_active { p_color } else { crate::ui::theme::palette().panel() };
+                    let text_color = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
+                    let btn_text = format!("{} {}", pat_idx + 1, self.patterns[pat_idx].name);
+                    if ui.add(egui::Button::new(egui::RichText::new(btn_text).strong().size(Theme::FONT_S).color(text_color)).fill(fill)).clicked() {
+                        self.select_pattern(pat_idx);
+                    }
                 }
-            }
+            });
 
             ui.separator();
 
@@ -1073,7 +1077,12 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
             let is_chopper_open = self.active_chopper_channel == Some(ch_idx);
             let ch = &mut self.channels[ch_idx];
 
-            ui.horizontal(|ui| {
+            // The row is ~980 px wide (the 16 steps alone are 416 px) and the dock can be
+            // 320 px, so it scrolls sideways instead of losing its last steps past the edge.
+            let row_content_w = 2.0 * 18.0 + 2.0 * 24.0 + 200.0 + 42.0 + 52.0 + 4.0
+                + 16.0 * 26.0
+                + 22.0 * ui.spacing().item_spacing.x;
+            crate::ui::widgets::horizontal_scroll_row(ui, ("channel_steps", ch_idx), row_content_w, |ui| {
                 // Mute & Solo LEDs
                 let mute_color = if ch.muted { crate::ui::theme::palette().bg() } else { crate::ui::theme::palette().green() };
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("M")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(mute_color).min_size(Vec2::new(18.0, 18.0))).on_hover_text(crate::i18n::t("Tysta kanalen (M)")).clicked() {
@@ -2615,6 +2624,15 @@ fn strip_fader(
     changed
 }
 
+/// Content widths for the four blocks of the track EQ row: knobs, curve, presets, dynamics.
+/// Each block gets a share of what the row actually has. The old fixed floors
+/// (160/220/150/200 px) needed ~790 px together and stacked one block per line in a
+/// 470 px dock. The 2 px slack keeps float rounding from wrapping the fourth block.
+fn eq_row_blocks(row_w: f32, block_pad: f32, block_gap: f32) -> [f32; 4] {
+    let usable = (row_w - block_gap * 3.0 - block_pad * 4.0 - 2.0).max(0.0);
+    [usable * 0.24, usable * 0.32, usable * 0.20, usable * 0.24]
+}
+
 /// En rattkolumn med fast bredd. Ett naket `vertical_centered` tar hela den
 /// återstående raden, så tre kolumner blev bredare än rutan de stod i — och då
 /// växte hela panelen utanför fönstret.
@@ -3318,16 +3336,10 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
             let block_pad = egui::Frame::group(ui.style()).inner_margin.sum().x;
             let row_w = ui.available_width();
             let block_gap = 8.0;
-            let usable = (row_w - block_gap * 3.0).max(4.0 * 180.0);
-            let knobs_w = (usable * 0.24 - block_pad).max(160.0);
-            let curve_w = (usable * 0.32 - block_pad).max(220.0);
-            let presets_w = (usable * 0.20 - block_pad).max(150.0);
+            let [knobs_w, curve_w, presets_w, dyn_w] = eq_row_blocks(row_w, block_pad, block_gap);
 
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(block_gap, 8.0);
-                // Radens vänsterkant: den sista rutan räknas mot den, inte mot
-                // `available_width` — den rapporterar hela den utökade raden.
-                let row_x0 = ui.cursor().min.x;
 
                 // Block A: 3-bands parametrisk EQ
                 ui.group(|ui| {
@@ -3385,7 +3397,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                             &mut track_mut.eq.low_gain_db,
                             &mut track_mut.eq.mid_gain_db,
                             &mut track_mut.eq.high_gain_db,
-                            Vec2::new((curve_w - 24.0).max(200.0), 84.0),
+                            Vec2::new((curve_w - 24.0).max(24.0), 84.0),
                         );
                     });
                 });
@@ -3471,10 +3483,8 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                     });
                 });
 
-                // Block D tar bredden som är kvar i raden, så panelens högerkant
-                // blir densamma som rutornas — de fyra fasta andelarna summorna
-                // aldrig exakt när knappar och avdelare tar sina pixlar.
-                let dyn_w = (row_x0 + row_w - ui.cursor().min.x - block_pad).max(200.0);
+                // Block D har sin andel ur samma delning som de tre andra, så de fyra
+                // rutorna slutar vid panelens högerkant.
                 // Block D: dynamik och effekt-sändning
                 ui.group(|ui| {
                     // **Fast ruta, inte `set_width` + `vertical`:** en grupp som bara får en
@@ -4614,6 +4624,33 @@ impl SonixApp {
             let k = self.partial_env_target - 1;
             self.partial_env_overrides.retain(|(index, _)| *index != k);
             self.partial_env_overrides.push((k, env));
+        }
+    }
+}
+
+#[cfg(test)]
+mod eq_row_tests {
+    use super::eq_row_blocks;
+
+    /// Four blocks used to need ~790 px because of their fixed floors, so a 470 px dock
+    /// stacked them one per line and the last one claimed the whole row. Now each block
+    /// takes a share of the row and no block is wider than the row itself.
+    #[test]
+    fn eq_row_blocks_never_exceed_the_width_they_are_given() {
+        let block_pad = eframe::egui::Frame::group(&eframe::egui::Style::default()).inner_margin.sum().x;
+        let block_gap = 8.0;
+        for row_w in [320.0, 470.0, 900.0, 1600.0] {
+            let blocks = eq_row_blocks(row_w, block_pad, block_gap);
+            let total = blocks.iter().sum::<f32>() + block_gap * 3.0 + block_pad * 4.0;
+            println!(
+                "row {row_w:.0} px -> blocks {:?}, total {total:.1} px (pad {block_pad:.0}, gap {block_gap:.0})",
+                blocks.map(|w| (w * 10.0).round() / 10.0)
+            );
+            for (i, w) in blocks.iter().enumerate() {
+                assert!(*w <= row_w, "block {i} is {w} px in a {row_w} px row");
+                assert!(*w > 0.0, "block {i} collapsed to {w} px");
+            }
+            assert!(total <= row_w, "blocks need {total} px in a {row_w} px row");
         }
     }
 }
