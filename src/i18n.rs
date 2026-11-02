@@ -374,6 +374,10 @@ macro_rules! tstatus {
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
         "⏳ Already waiting on Suno." => "⏳ Already waiting on Suno.",
+        "⏳ Suno is creating the two takes…" => "⏳ Suno is creating the two takes…",
+        "🎧 Lyssna — 1 kredit" => "🎧 Listen — 1 credit",
+        "🎧 Spela upp" => "🎧 Play",
+        "📥 Importera — 1 kredit" => "📥 Import — 1 credit",
         "☀ Connecting — finish the sign-in in the browser, then come back here." => "☀ Connecting — finish the sign-in in the browser, then come back here.",
         "⚠ Write a prompt first." => "⚠ Write a prompt first.",
         "⏳ Suno is creating the song…" => "⏳ Suno is creating the song…",
@@ -3036,6 +3040,10 @@ fn tr_en(key: &str) -> Option<&'static str> {
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
         "⏳ Already waiting on Suno." => "⏳ Venter allerede på Suno.",
+        "⏳ Suno is creating the two takes…" => "⏳ Suno skaber de to optagelser…",
+        "🎧 Lyssna — 1 kredit" => "🎧 Lyt — 1 kredit",
+        "🎧 Spela upp" => "🎧 Afspil",
+        "📥 Importera — 1 kredit" => "📥 Importer — 1 kredit",
         "☀ Connecting — finish the sign-in in the browser, then come back here." => "☀ Forbinder — fuldfør login i browseren, og kom så tilbage hertil.",
         "⚠ Write a prompt first." => "⚠ Skriv en prompt først.",
         "⏳ Suno is creating the song…" => "⏳ Suno skaber sangen…",
@@ -5657,6 +5665,10 @@ fn tr_da(key: &str) -> Option<&'static str> {
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
         "⏳ Already waiting on Suno." => "⏳ Venter allerede på Suno.",
+        "⏳ Suno is creating the two takes…" => "⏳ Suno lager de to opptakene…",
+        "🎧 Lyssna — 1 kredit" => "🎧 Lytt — 1 kreditt",
+        "🎧 Spela upp" => "🎧 Spill av",
+        "📥 Importera — 1 kredit" => "📥 Importer — 1 kreditt",
         "☀ Connecting — finish the sign-in in the browser, then come back here." => "☀ Kobler til — fullfør innloggingen i nettleseren, og kom så tilbake hit.",
         "⚠ Write a prompt first." => "⚠ Skriv en prompt først.",
         "⏳ Suno is creating the song…" => "⏳ Suno lager sangen…",
@@ -8278,6 +8290,10 @@ fn tr_no(key: &str) -> Option<&'static str> {
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
         "⏳ Already waiting on Suno." => "⏳ Warte bereits auf Suno.",
+        "⏳ Suno is creating the two takes…" => "⏳ Suno erstellt die zwei Takes…",
+        "🎧 Lyssna — 1 kredit" => "🎧 Anhören — 1 Guthaben",
+        "🎧 Spela upp" => "🎧 Abspielen",
+        "📥 Importera — 1 kredit" => "📥 Importieren — 1 Guthaben",
         "☀ Connecting — finish the sign-in in the browser, then come back here." => "☀ Verbinde — schließe die Anmeldung im Browser ab und komm dann hierher zurück.",
         "⚠ Write a prompt first." => "⚠ Schreib zuerst einen Prompt.",
         "⏳ Suno is creating the song…" => "⏳ Suno erstellt den Song…",
@@ -10899,6 +10915,10 @@ fn tr_de(key: &str) -> Option<&'static str> {
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
         "⏳ Already waiting on Suno." => "⏳ Ya esperando a Suno.",
+        "⏳ Suno is creating the two takes…" => "⏳ Suno está creando las dos tomas…",
+        "🎧 Lyssna — 1 kredit" => "🎧 Escuchar — 1 crédito",
+        "🎧 Spela upp" => "🎧 Reproducir",
+        "📥 Importera — 1 kredit" => "📥 Importar — 1 crédito",
         "☀ Connecting — finish the sign-in in the browser, then come back here." => "☀ Conectando — completa el inicio de sesión en el navegador y vuelve aquí.",
         "⚠ Write a prompt first." => "⚠ Escribe un prompt primero.",
         "⏳ Suno is creating the song…" => "⏳ Suno está creando la canción…",
@@ -13520,6 +13540,10 @@ fn tr_es(key: &str) -> Option<&'static str> {
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
         "⏳ Already waiting on Suno." => "⏳ Déjà en attente de Suno.",
+        "⏳ Suno is creating the two takes…" => "⏳ Suno crée les deux prises…",
+        "🎧 Lyssna — 1 kredit" => "🎧 Écouter — 1 crédit",
+        "🎧 Spela upp" => "🎧 Lire",
+        "📥 Importera — 1 kredit" => "📥 Importer — 1 crédit",
         "☀ Connecting — finish the sign-in in the browser, then come back here." => "☀ Connexion — termine la connexion dans le navigateur, puis reviens ici.",
         "⚠ Write a prompt first." => "⚠ Écris d'abord un prompt.",
         "⏳ Suno is creating the song…" => "⏳ Suno crée le morceau…",

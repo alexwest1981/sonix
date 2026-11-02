@@ -77,6 +77,43 @@ pub fn fields_from_schema(schema: &Value) -> Vec<(String, SunoField)> {
     out
 }
 
+/// The live schema's fields with the values already typed carried over by field name.
+///
+/// The schema decides which fields exist; a value typed before sign-in survives when the name
+/// matches. A name the server does not describe (the fallback's own extras) is dropped.
+pub fn merge_fields(
+    typed: &[(String, SunoField)],
+    live: Vec<(String, SunoField)>,
+) -> Vec<(String, SunoField)> {
+    live.into_iter()
+        .map(|(name, field)| match typed.iter().find(|(old, _)| *old == name) {
+            Some((_, old)) => (name, carry_value(old.clone(), field)),
+            None => (name, field),
+        })
+        .collect()
+}
+
+/// A typed value wins; the schema decides the shape around it (options, bounds, multiline).
+fn carry_value(old: SunoField, new: SunoField) -> SunoField {
+    match (old, new) {
+        (SunoField::Text { value, .. }, SunoField::Text { multiline, .. }) => {
+            SunoField::Text { value, multiline }
+        }
+        (SunoField::Bool(on), SunoField::Bool(_)) => SunoField::Bool(on),
+        (SunoField::Number { value, .. }, SunoField::Number { min, max, .. }) => {
+            SunoField::Number { value, min, max }
+        }
+        // The schema's own list decides which choices exist; the index is kept if it still fits.
+        (SunoField::Choice { selected, .. }, SunoField::Choice { options, .. }) => {
+            SunoField::Choice {
+                selected: selected.min(options.len().saturating_sub(1)),
+                options,
+            }
+        }
+        (_, new) => new,
+    }
+}
+
 /// Argumenten som skickas till verktyget. Tomma texter och orörda standardval skickas **inte** —
 /// ett fält användaren inte rört ska inte tvinga servern till ett värde.
 pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
@@ -479,6 +516,50 @@ mod tests {
         }
         let args = args_from_form(&fields);
         println!("live-body: {args}");
+    }
+
+    /// Typing before sign-in is not thrown away: the live schema keeps the typed values by name
+    /// and drops the fallback's extra names.
+    #[test]
+    fn a_typed_form_survives_the_live_schema() {
+        let mut typed = fallback_fields();
+        for (name, value) in [
+            ("description", "pagan metal with an irish harp"),
+            ("lyrics", "[verse]\nlong ships on a grey sea"),
+            ("style", "pagan metal, irish harp"),
+            ("negative_style", "no autotune"),
+        ] {
+            if let Some((_, SunoField::Text { value: slot, .. })) =
+                typed.iter_mut().find(|(old, _)| old == name)
+            {
+                *slot = value.to_string();
+            }
+        }
+        // The server's schema does not describe `negative_style`: it must not survive.
+        let live = fields_from_schema(&serde_json::json!({
+            "type": "object",
+            "properties": {
+                "description": { "type": "string" },
+                "lyrics": { "type": "string" },
+                "style": { "type": "string" },
+                "title": { "type": "string" }
+            }
+        }));
+        let merged = merge_fields(&typed, live);
+        println!("merged fields: {merged:?}");
+        let get = |name: &str| {
+            merged
+                .iter()
+                .find(|(old, _)| old == name)
+                .map(|(_, field)| field.clone())
+        };
+        assert!(matches!(get("description"), Some(SunoField::Text { ref value, .. }) if value == "pagan metal with an irish harp"));
+        assert!(matches!(get("lyrics"), Some(SunoField::Text { ref value, .. }) if value.contains("long ships")));
+        assert!(matches!(get("style"), Some(SunoField::Text { ref value, .. }) if value == "pagan metal, irish harp"));
+        assert!(matches!(get("title"), Some(SunoField::Text { ref value, .. }) if value.is_empty()));
+        println!("field names after the merge: {:?}", merged.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>());
+        assert_eq!(merged.len(), 4, "only the server's own names survive");
+        assert!(merged.iter().all(|(name, _)| name != "negative_style"));
     }
 
     /// Ett arbetsytenamn är inget id: servern svarar "workspace_id is not a workspace id".

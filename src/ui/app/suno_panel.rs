@@ -16,6 +16,53 @@ use super::SonixApp;
 /// Flikarna inne i Suno-ytan.
 const TABS: [&str; 6] = ["Skapa", "Röster", "Bibliotek", "Spellistor", "Arbetsytor", "Konto"];
 
+/// What a confirmed download credit buys. The armed row lives in `suno_credit_song` as
+/// `"<tag>:<id>"`, so a row is confirmed only by the button the user pressed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SunoSpend {
+    /// Listen to one of the two takes.
+    Clip,
+    /// Listen to a library row.
+    Play,
+    /// Import a library row onto the timeline.
+    Import,
+}
+
+impl SunoSpend {
+    fn tag(self) -> &'static str {
+        match self {
+            Self::Clip => "clip",
+            Self::Play => "play",
+            Self::Import => "import",
+        }
+    }
+}
+
+/// A click on a spending button either arms its row or spends on the row already armed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SpendStep {
+    Arm,
+    Confirm,
+}
+
+fn credit_step(armed: Option<&str>, what: SunoSpend, id: &str) -> SpendStep {
+    match armed.and_then(|value| value.split_once(':')) {
+        Some((tag, armed_id)) if tag == what.tag() && armed_id == id => SpendStep::Confirm,
+        _ => SpendStep::Arm,
+    }
+}
+
+/// Applies the click: arming only records the row, and `Confirm` is the single step that lets the
+/// caller download. Nothing is fetched before the second click.
+fn step_after_click(armed: &mut Option<String>, what: SunoSpend, id: &str) -> SpendStep {
+    let step = credit_step(armed.as_deref(), what, id);
+    *armed = match step {
+        SpendStep::Arm => Some(format!("{}:{id}", what.tag())),
+        SpendStep::Confirm => None,
+    };
+    step
+}
+
 impl SonixApp {
     pub(crate) fn render_suno_view(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
@@ -56,11 +103,17 @@ impl SonixApp {
                 self.suno_create();
             }
             if !self.suno_status.trim().is_empty() {
-                ui.label(
-                    RichText::new(&self.suno_status)
-                        .size(Theme::FONT_S)
-                        .color(palette().cyan()),
-                );
+                // Long statuses are cut off in the header row; the full line stays on hover.
+                let _ = ui
+                    .add(
+                        egui::Label::new(
+                            RichText::new(&self.suno_status)
+                                .size(Theme::FONT_S)
+                                .color(palette().cyan()),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(&self.suno_status);
             }
         });
         // Adressen syns medan inloggningen väntar — en GUI-app har ingen terminal att läsa den ur.
@@ -189,6 +242,29 @@ impl SonixApp {
                     }
                 }
             });
+    }
+
+    /// The one spending button every credit action shares: it states the cost, arms its row on
+    /// the first click and returns `true` only on the confirming click — the only moment a
+    /// download may start.
+    fn suno_spend_button(
+        &mut self,
+        ui: &mut egui::Ui,
+        enabled: bool,
+        what: SunoSpend,
+        id: &str,
+        label: &'static str,
+    ) -> bool {
+        let armed = credit_step(self.suno_credit_song.as_deref(), what, id) == SpendStep::Confirm;
+        let text = if armed {
+            crate::i18n::t("✅ Bekräfta — 1 kredit")
+        } else {
+            label
+        };
+        if !ui.add_enabled(enabled, egui::Button::new(text)).clicked() {
+            return false;
+        }
+        step_after_click(&mut self.suno_credit_song, what, id) == SpendStep::Confirm
     }
 
     /// **Skapa** — Sunos eget flöde: lyrics, styles, bilagor till vänster, options till höger.
@@ -445,7 +521,7 @@ impl SonixApp {
                     .size(Theme::FONT_S)
                     .color(palette().orange()),
             );
-            let rows: Vec<(usize, String, Option<f64>, bool)> = self
+            let rows: Vec<(usize, String, Option<f64>, bool, String)> = self
                 .suno_clips
                 .iter()
                 .enumerate()
@@ -455,13 +531,13 @@ impl SonixApp {
                     } else {
                         c.title.clone()
                     };
-                    (i, title, c.seconds, c.file.is_some())
+                    (i, title, c.seconds, c.file.is_some(), c.id.clone())
                 })
                 .collect();
             let mut audition: Option<usize> = None;
             let mut separate: Option<usize> = None;
             let busy = self.suno_pending.is_some() || self.stem_separation_active;
-            for (index, title, seconds, has_file) in rows {
+            for (index, title, seconds, has_file, id) in rows {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(title).size(Theme::FONT_S));
                     let ready = seconds.is_some() || has_file;
@@ -484,11 +560,22 @@ impl SonixApp {
                         }
                         None => {}
                     }
-                    if ui
-                        .add_enabled(!busy && ready, egui::Button::new(crate::i18n::t("🎧 Lyssna")))
-                        .on_hover_text(crate::i18n::t("Hämtar filen — 1 nedladdningskredit"))
-                        .clicked()
-                    {
+                    // A take already on disk plays for free; an unfetched one costs a credit and
+                    // is armed first, so nothing is downloaded by the first click.
+                    if has_file {
+                        if ui
+                            .add_enabled(!busy, egui::Button::new(crate::i18n::t("🎧 Spela upp")))
+                            .clicked()
+                        {
+                            audition = Some(index);
+                        }
+                    } else if self.suno_spend_button(
+                        ui,
+                        !busy && ready,
+                        SunoSpend::Clip,
+                        &id,
+                        crate::i18n::t("🎧 Lyssna — 1 kredit"),
+                    ) {
                         audition = Some(index);
                     }
                     if ui
@@ -552,53 +639,6 @@ impl SonixApp {
                 }
             });
         }
-        self.suno_pick_list(ui);
-        // **Separationen syns här, inte i en annan flik.** Väljer man → Separatorn stannar ytan
-        // kvar och visar förloppet; när stämmorna är klara går de till bordet med ett klick.
-        if self.stem_separation_active {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(
-                    RichText::new(crate::i18n::t("Separerar stämmor…"))
-                        .size(Theme::FONT_S)
-                        .color(palette().cyan()),
-                );
-                ui.add(
-                    egui::ProgressBar::new(self.stem_project.progress)
-                        .desired_width(220.0)
-                        .show_percentage(),
-                );
-            });
-        } else if !self.stem_project.stem_files.is_empty() {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(crate::tstatus!(
-                        "🎚 {} stämmor klara från {}",
-                        self.stem_project.stem_files.len(),
-                        self.stem_project.track_title
-                    ))
-                    .size(Theme::FONT_S)
-                    .color(palette().cyan()),
-                );
-                if ui.button(crate::i18n::t("→ till bordet")).clicked()
-                    && let Some(dir) = self
-                        .stem_project
-                        .stem_files
-                        .first()
-                        .and_then(|p| std::path::Path::new(p).parent())
-                {
-                    let dir = dir.to_string_lossy().to_string();
-                    let title = self.stem_project.track_title.clone();
-                    self.import_suno_stems_from_folder(&dir, &title, 0.0);
-                    self.stem_project.stem_files.clear();
-                    self.suno_status =
-                        crate::i18n::t("✔ Stämmorna ligger på bordet.").to_string();
-                }
-            });
-        }
-
     }
 
     /// **Röster** — `voices-list` som en lista, inte som ett namn i en verktygsrad.
@@ -685,7 +725,6 @@ impl SonixApp {
             })
             .collect();
         let mut import: Option<usize> = None;
-        let mut confirm: Option<usize> = None;
         let mut play: Option<usize> = None;
         for (index, (title, meta, index_id)) in rows.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -695,28 +734,24 @@ impl SonixApp {
                         .size(Theme::FONT_XS)
                         .color(palette().text_muted()),
                 );
-                if ui
-                    .add_enabled(!pending, egui::Button::new(crate::i18n::t("🎧")))
-                    .on_hover_text(crate::i18n::t("Lyssna — hämtar filen, 1 kredit"))
-                    .clicked()
-                {
+                // Both downloads cost a credit: each button states it and asks for its own
+                // confirmation before anything is fetched.
+                if self.suno_spend_button(
+                    ui,
+                    !pending,
+                    SunoSpend::Play,
+                    index_id,
+                    crate::i18n::t("🎧 Lyssna — 1 kredit"),
+                ) {
                     play = Some(index);
                 }
-                // Kostar hämtningen en kredit visar raden det innan något spendera.
-                if self.suno_credit_song.as_deref() == Some(index_id.as_str()) {
-                    if ui
-                        .add_enabled(
-                            !pending,
-                            egui::Button::new(crate::i18n::t("✅ Bekräfta — 1 kredit")),
-                        )
-                        .clicked()
-                    {
-                        confirm = Some(index);
-                    }
-                } else if ui
-                    .add_enabled(!pending, egui::Button::new(crate::i18n::t("📥 Importera")))
-                    .clicked()
-                {
+                if self.suno_spend_button(
+                    ui,
+                    !pending,
+                    SunoSpend::Import,
+                    index_id,
+                    crate::i18n::t("📥 Importera — 1 kredit"),
+                ) {
                     import = Some(index);
                 }
             });
@@ -725,11 +760,7 @@ impl SonixApp {
             self.suno_play_library(index);
         }
         if let Some(index) = import {
-            self.suno_import_song(index);
-        }
-        if let Some(index) = confirm {
             let id = rows[index].2.clone();
-            self.suno_credit_song = None;
             self.suno_import_confirmed(&id);
         }
     }
@@ -914,5 +945,41 @@ impl SonixApp {
         };
         let caption = crate::i18n::t(label).to_string();
         ui.checkbox(on, caption);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The credit gate: the first click on a spending button only arms its row, so no task is
+    /// spawned; the second click on the same row confirms and is the only spending step.
+    #[test]
+    fn a_credit_click_arms_the_row_before_it_spends() {
+        let mut armed: Option<String> = None;
+        let mut spawned = 0;
+        for click in 1..=2 {
+            let step = step_after_click(&mut armed, SunoSpend::Clip, "clip-7");
+            if step == SpendStep::Confirm {
+                spawned += 1;
+            }
+            println!("click {click}: {step:?}, armed={armed:?}, spawned tasks={spawned}");
+        }
+        assert_eq!(spawned, 1, "a take was downloaded twice");
+        // The confirm belongs to the button that was pressed: another action on the same id, or
+        // another row, only arms itself.
+        println!(
+            "play on the same id: {:?}, clip on another id: {:?}",
+            credit_step(Some("play:clip-7"), SunoSpend::Clip, "clip-7"),
+            credit_step(Some("clip:clip-8"), SunoSpend::Clip, "clip-7"),
+        );
+        assert_eq!(
+            credit_step(Some("play:clip-7"), SunoSpend::Clip, "clip-7"),
+            SpendStep::Arm
+        );
+        assert_eq!(
+            credit_step(Some("clip:clip-8"), SunoSpend::Clip, "clip-7"),
+            SpendStep::Arm
+        );
     }
 }
