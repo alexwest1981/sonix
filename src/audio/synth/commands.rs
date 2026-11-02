@@ -501,30 +501,10 @@ impl SynthEngine {
                     p.note_on(freq, velocity);
                 }
             }
-            AudioCommand::SetInstrument { path } => {
-                self.instrument = match path.as_deref() {
-                    // Den inbyggda wavetablen går genom samma källa som ett JSFX-instrument: en
-                    // pseudo-sökväg, så kommandot och UI-knappen är desamma.
-                    Some(crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH) => Some(
-                        Box::new(crate::audio::builtin_fx::wavetable_fx::WavetableSource::new(
-                            self.sample_rate,
-                        )),
-                    ),
-                    // The struck modal resonator: its own pseudo-path, same command.
-                    Some(crate::audio::builtin_fx::modal_fx::MODAL_SOURCE_PATH) => Some(
-                        Box::new(crate::audio::builtin_fx::modal_fx::ModalSource::new(
-                            self.sample_rate,
-                        )),
-                    ),
-                    Some(p) => match crate::audio::jsfx::processor::load(p, self.sample_rate) {
-                        Ok(proc) => Some(proc),
-                        Err(err) => {
-                            self.dbg_state("ENGINE", &format!("instrument: {err}"));
-                            None
-                        }
-                    },
-                    None => None,
-                };
+            AudioCommand::SetInstrument { source } => {
+                // The source is already built (file read + JSFX compile happened on the UI
+                // thread, see `build_instrument`): the audio thread only swaps the box.
+                self.instrument = source;
                 // Bufferten är tom så första blocket fylls direkt.
                 self.instrument_pos = self.instrument_left.len();
             }
