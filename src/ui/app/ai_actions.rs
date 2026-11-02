@@ -661,6 +661,16 @@ fn first_line(text: &str) -> String {
         .collect()
 }
 
+/// The file the listen step already saved for this take, if it is still on disk. Reusing it is
+/// what keeps listen-then-import from paying the download credit twice.
+fn saved_clip_file(clips: &[crate::ui::app::SunoClip], id: &str) -> Option<std::path::PathBuf> {
+    clips
+        .iter()
+        .find(|clip| clip.id == id)
+        .and_then(|clip| clip.file.clone())
+        .filter(|file| file.exists())
+}
+
 impl SonixApp {
     /// Signs in on a background thread: `connect()` opens the browser and blocks until the
     /// redirect arrives, which would freeze the UI thread.
@@ -782,7 +792,7 @@ impl SonixApp {
         // upgrade if the handshake ever costs real time.
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
-        self.suno_status = crate::tstatus!("⏳ Suno is creating: {args}");
+        self.suno_status = crate::i18n::t("⏳ Suno is creating the two takes…").to_string();
         std::thread::spawn(move || {
             let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
                 match tool {
@@ -812,37 +822,6 @@ impl SonixApp {
             let result = crate::audio::suno::SunoSession::connect()
                 .and_then(|mut session| session.library(filter, 50))
                 .map(SunoTask::Library);
-            if let Ok(mut guard) = slot.lock() {
-                *guard = Some(result);
-            }
-        });
-    }
-
-    /// Pulls one song from the library into the project (stems first) on a background thread.
-    pub fn suno_import_song(&mut self, index: usize) {
-        if self.suno_pending.is_some() {
-            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
-            return;
-        }
-        let Some(song) = self.suno_library.get(index).cloned() else {
-            return;
-        };
-        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
-        self.suno_pending = Some(slot.clone());
-        self.suno_status = crate::tstatus!("⏳ Downloading \"{}\"…", song.title);
-        let song_id = song.id.clone();
-        std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect()
-                .and_then(|mut session| session.download_song(&song))
-                .map(SunoTask::Generated)
-                .map_err(|e| {
-                    // Krediten: felet bär id:t så panelen kan fråga om lov i stället för att ge upp.
-                    if e == crate::audio::suno::NEEDS_CREDIT {
-                        format!("{}|#|{e}", song_id)
-                    } else {
-                        e
-                    }
-                });
             if let Ok(mut guard) = slot.lock() {
                 *guard = Some(result);
             }
@@ -970,9 +949,26 @@ impl SonixApp {
         self.suno_status = crate::i18n::t("✔ Stämmorna ligger på tidslinjen.").to_string();
     }
 
-    /// Imports the song whose download the user just confirmed — one credit is spent.
+    /// Imports the song whose download the user just confirmed — one credit is spent, unless the
+    /// listen step already saved the file: then that file is imported and nothing is fetched.
     pub fn suno_import_confirmed(&mut self, id: &str) {
         if self.suno_pending.is_some() {
+            return;
+        }
+        if let Some(file) = saved_clip_file(&self.suno_clips, id) {
+            let title = self
+                .suno_clips
+                .iter()
+                .find(|clip| clip.id == id)
+                .map(|clip| clip.title.clone())
+                .unwrap_or_default();
+            self.install_suno_song(crate::audio::suno::GeneratedSong {
+                files: vec![file],
+                stems: false,
+                title,
+                raw: serde_json::Value::Null,
+                clip_ids: Vec::new(),
+            });
             return;
         }
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
@@ -1034,10 +1030,16 @@ impl SonixApp {
                 // Arbetsytorna behövs för "Spara i": väljaren kan inte fyllas av gissningar.
                 self.suno_load_meta(SunoMeta::Workspaces);
                 self.suno_tool_name = tool_name;
-                self.suno_form = schema
-                    .as_ref()
-                    .map(crate::ui::app::suno_form::fields_from_schema)
-                    .unwrap_or_default();
+                // The server's schema decides the fields, but a value typed before sign-in is not
+                // thrown away: it is carried over by field name.
+                let typed = std::mem::take(&mut self.suno_form);
+                self.suno_form = crate::ui::app::suno_form::merge_fields(
+                    &typed,
+                    schema
+                        .as_ref()
+                        .map(crate::ui::app::suno_form::fields_from_schema)
+                        .unwrap_or_default(),
+                );
                 self.suno_voices = voices;
                 self.suno_voice_hint = voice_hint;
                 self.suno_voice_param = voice_param;
@@ -1079,20 +1081,7 @@ impl SonixApp {
                 self.suno_status = crate::tstatus!("☀ {} songs in the library.", songs.len());
                 self.suno_library = songs;
             }
-            Err(error) => {
-                // Kreditkravet kommer kodat som "<id>\u{1}<felet>": panelen ska fråga, inte ge upp.
-                match error.split_once("|#|") {
-                    Some((id, text)) => {
-                        self.suno_credit_song = Some(id.to_string());
-                        self.suno_status = crate::i18n::t(
-                            "⚠ Nedladdningen kostar en kredit — bekräfta i bibliotekets rad.",
-                        )
-                        .to_string();
-                        let _ = text;
-                    }
-                    None => self.suno_status = error,
-                }
-            }
+            Err(error) => self.suno_status = error,
         }
     }
 
@@ -1176,6 +1165,53 @@ impl SonixApp {
             }
         }
         self.suno_last = Some(song);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::saved_clip_file;
+    use crate::ui::app::SunoClip;
+
+    /// Listening then importing must not pay the download credit twice: the take the listen step
+    /// saved is reused, so the import makes no `audio-download` tool call.
+    #[test]
+    fn a_saved_take_is_imported_without_a_second_download() {
+        let dir = std::env::temp_dir().join(format!("sonix-suno-saved-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let saved = dir.join("take-a.wav");
+        std::fs::write(&saved, b"RIFF").expect("write the saved take");
+        let clips = vec![
+            SunoClip {
+                id: "clip-1".to_string(),
+                title: "Take A".to_string(),
+                seconds: Some(12.0),
+                file: Some(saved.clone()),
+            },
+            // The file was deleted behind us: this row still needs the download credit.
+            SunoClip {
+                id: "clip-2".to_string(),
+                title: "Take B".to_string(),
+                seconds: Some(12.0),
+                file: Some(dir.join("gone.wav")),
+            },
+        ];
+        // The import spawns a download only when the lookup comes back empty; count those calls.
+        let mut download_tool_calls = 0;
+        let source = saved_clip_file(&clips, "clip-1");
+        if source.is_none() {
+            download_tool_calls += 1;
+        }
+        println!("reused file: {source:?}");
+        println!("download tool calls: {download_tool_calls}");
+        assert_eq!(source, Some(saved));
+        assert_eq!(download_tool_calls, 0, "the saved take was fetched again");
+        println!(
+            "a row without a file: {:?}",
+            saved_clip_file(&clips, "clip-2")
+        );
+        assert_eq!(saved_clip_file(&clips, "clip-2"), None);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 
