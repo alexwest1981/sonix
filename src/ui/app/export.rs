@@ -10,6 +10,21 @@
 use super::*;
 use crate::ui::theme::Theme;
 
+/// Tempot en stämregion deklareras mot: det uppmätta ur ljudet när det är ett tempo
+/// alls, annars projektets. Används till både regionens längd och `source_bpm`, så
+/// att de två aldrig kan säga olika saker.
+fn stem_region_bpm(measured: f32, project: f32) -> f32 {
+    crate::audio::stem_separator::sane_bpm(measured).unwrap_or(project)
+}
+
+/// Antalet takter en stämregion upptar i `bpm` — minst en, så en kort stämma
+/// fortfarande får ett klipp.
+pub(crate) fn stem_region_bars(duration_secs: f32, bpm: f32) -> f32 {
+    (crate::audio::tempo::TempoMap::single(bpm.max(40.0))
+        .bars_for_secs_at(0.0, duration_secs as f64) as f32)
+        .max(1.0)
+}
+
 impl SonixApp {
 /// Lägger de separerade stämmorna som riktiga tidslinjespår.
 ///
@@ -63,10 +78,11 @@ pub fn export_separated_stems(&mut self) {
         envelopes.push(envelope);
     }
 
-    let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
-    let bars =
-        (tempo.bars_for_secs_at(0.0, self.stem_project.duration_seconds as f64) as f32)
-            .max(1.0);
+    // Tempot regionen byggs och deklareras mot är **ett** tal: det uppmätta när det
+    // finns, annars projektets. Två olika (klippets längd i ett tempo, `source_bpm` i
+    // ett annat) ger en region som spelar fel hastighet — 125→128 driver 1,4 s/min.
+    let bpm = stem_region_bpm(self.stem_project.bpm, self.bpm);
+    let bars = stem_region_bars(self.stem_project.duration_seconds, bpm);
     let kinds = [TrackKind::VocalAudio, TrackKind::Drums, TrackKind::Bassline, TrackKind::CustomAudio];
     let mut new_tracks = Vec::new();
     // Stämman, kanalens inställningar och filen hör ihop tre och tre — gå
@@ -81,7 +97,7 @@ pub fn export_separated_stems(&mut self) {
         let ch = &self.stem_project.stems[i];
         let audio = &self.stem_project.stem_audio[i];
         let region = AudioRegion {
-            source_bpm: self.bpm, // stämmorna byggdes mot projektets tempo (8.10)
+            source_bpm: bpm, // det uppmätta tempot; regionens längd räknades i samma tal
             tape: false,
             id: i + 1,
             name: ch.stem_type.name().to_string(),
@@ -1432,5 +1448,46 @@ impl SonixApp {
         ));
         self.sync_all_stems_to_engine();
         self.status_message = crate::tstatus!("🧹 Lagade {} klickar i spåret", repaired);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 125 → 128: regionen ska deklareras mot det **uppmätta** tempot. Med
+    /// projektets 125 i `source_bpm` spelas klippet 1,024x för långsamt — 1,4 s
+    /// per minut, och allt fler för varje minut.
+    #[test]
+    fn the_exported_region_declares_the_measured_tempo() {
+        let (project_bpm, measured_bpm) = (125.0f32, 128.0f32);
+        let declared = stem_region_bpm(measured_bpm, project_bpm);
+        let legacy_drift_per_min = 60.0 * (measured_bpm / project_bpm - 1.0);
+        println!(
+            "projekt {project_bpm:.0} BPM, uppmätt {measured_bpm:.0} BPM, regionens source_bpm \
+             {declared:.1} (projektets tempo hade drivit {legacy_drift_per_min:.2} s/min)"
+        );
+        assert_eq!(declared, measured_bpm, "regionens source_bpm ska vara det uppmätta");
+    }
+
+    /// Ingen puls (0,0) → projektets tempo, och regionen blir lika lång som ljudet.
+    /// Med 40 BPM i den ena änden och projektets tempo i den andra klipptes
+    /// regionen till en bråkdel av sin längd.
+    #[test]
+    fn an_unmeasured_tempo_keeps_the_project_tempo_and_the_audio_length() {
+        let project_bpm = 125.0f32;
+        let secs = 4.0f32;
+        let declared = stem_region_bpm(0.0, project_bpm);
+        let bars = stem_region_bars(secs, declared);
+        let region_secs = crate::audio::tempo::TempoMap::single(declared)
+            .secs_for_bars_at(0.0, bars as f64);
+        println!(
+            "uppmätt 0,0 → {declared:.0} BPM, {bars:.3} takter = {region_secs:.4} s för {secs:.1} s ljud"
+        );
+        assert_eq!(declared, project_bpm);
+        assert!(
+            (region_secs - secs as f64).abs() < 1e-3,
+            "regionen ska vara lika lång som ljudet: {region_secs:.4} s mot {secs:.1} s"
+        );
     }
 }

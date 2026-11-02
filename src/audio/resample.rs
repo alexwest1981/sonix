@@ -3,8 +3,8 @@
 //! Linjär interpolation är ett 2-punkters lågpass: den dämpar diskanten olika mycket beroende på
 //! var i intervallet sampeln hamnar, och den läcker in vikningsdistorsion när man går nedåt i
 //! samplingsfrekvens. Det hörs som en grumlig diskant, och för stämsepareringen spelar det roll
-//! eftersom modellerna arbetar i 48 kHz medan filen ofta är 44,1 kHz — **två** omsamplingar per
-//! separation, in och ut.
+//! eftersom modellerna arbetar i 44,1 kHz medan filen ofta är 48 kHz — **två** omsamplingar per
+//! separation, in och ut (`neural_separator::stems_at_rate` tar tillbaka stämmorna).
 //!
 //! Implementationen är en rak fönstrad sinc (Blackman, 32 taggar ≈ 16 per sida). Ingen
 //! polyfas-tabell: det här körs en gång per fil, inte i realtid, och 32 taggar per sampel är

@@ -579,6 +579,23 @@ pub fn separate_neural_with(
     }
 }
 
+/// Lägger stämmorna på den frekvens anroparen rapporterar, så att data och
+/// `SeparationResult::sample_rate` alltid säger samma sak. Samma frekvens = orörd data.
+#[cfg_attr(not(feature = "neural"), allow(dead_code))]
+pub fn stems_at_rate(stems: Vec<StemAudio>, from: u32, to: u32) -> Vec<StemAudio> {
+    if from == to {
+        return stems;
+    }
+    stems
+        .into_iter()
+        .map(|stem| {
+            let (left, right) =
+                crate::audio::resample::resample_sinc(&stem.left, &stem.right, from, to);
+            StemAudio { left, right }
+        })
+        .collect()
+}
+
 #[cfg(feature = "neural")]
 mod backend {
     use super::*;
@@ -621,12 +638,15 @@ mod backend {
         // Global normalisation, matching the Demucs/MSST `demix()` path.
         let (mean, std) = mean_std(&l[..n], &r[..n]);
 
-        match spec.format {
+        let stems = match spec.format {
             ModelFormat::Waveform => run_waveform(&mut session, spec, &l, &r, mean, std, n, progress),
             ModelFormat::Spectrogram => {
                 run_spectrogram(&mut session, spec, &l, &r, mean, std, n, progress)
             }
-        }
+        }?;
+        // Modellen lämnar 44,1 kHz. Utan den här vägen tillbaka spelar en 48 kHz-källa
+        // 0,919x (147 cent falskt) medan resultatet rapporterar källans frekvens.
+        Ok(stems_at_rate(stems, MODEL_SAMPLE_RATE, sample_rate))
     }
 
     fn mean_std(l: &[f32], r: &[f32]) -> (f32, f32) {

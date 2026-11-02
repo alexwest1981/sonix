@@ -469,6 +469,16 @@ pub fn poll_stem_separation(&mut self) {
                 .stem_project
                 .install_separation(result, &source, &stems_dir, &base)
                 .err();
+            // Det uppmätta tempot går in i projektet genom tempokartan, så att
+            // `tempo_points` är den enda sanningen. Utan ett tempo ur ljudet rörs inget:
+            // projektets eget tempo och karta står kvar.
+            if let Some(measured) = crate::audio::stem_separator::sane_bpm(self.stem_project.bpm)
+                && (measured - self.bpm).abs() > 0.01
+            {
+                self.set_project_bpm(measured);
+                // Kartan kan ha klamrat värdet; regionen ska deklarera det som gäller.
+                self.stem_project.bpm = self.bpm;
+            }
             self.load_separated_stems_to_engine();
             // **Kedjan slutar i Arrangera.** Startades separationen från Suno ska stämmorna rakt in
             // på bordet och ytan landa i tidslinjen — inte stanna i separatorn.
