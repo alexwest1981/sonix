@@ -210,6 +210,11 @@ pub struct TimelineUndoSnapshot {
     pub vca_faders: [f32; crate::audio::synth::NUM_VCAS],
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
     pub vca_solos: [bool; crate::audio::synth::NUM_VCAS],
+    /// **Tempot och dess punkter.** Utan dem kunde en tempoändring inte ångras: den sträcker om
+    /// varje klipp och flyttar varje takt, och Ctrl+Z lämnade både tempot och klippen kvar
+    /// (EGM 3, fynd 7).
+    pub bpm: f32,
+    pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
     /// **Det som hörs utanför spåren** (Fas 6.2): masterns kedja (delay, reverb, drive, volym,
     /// master-FX:et, pedalerna, EQ-noderna) och plugin-kurvorna. De låg utanför
     /// `playlist_tracks`, så en masterändring kunde inte ångras alls och en plugin-kurva
@@ -1088,6 +1093,8 @@ pub(crate) fn current_snapshot(&self, description: &str) -> TimelineUndoSnapshot
         vca_faders: self.vca_faders,
         vca_muted: self.vca_muted,
         vca_solos: self.vca_solos,
+        bpm: self.bpm,
+        tempo_points: self.tempo_points.clone(),
         non_track: self.non_track_sound(),
         selected_timeline_track: self.selected_timeline_track,
         selected_audio_region: self.selected_audio_region,
@@ -1154,6 +1161,8 @@ fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
     // **Mastern och plugin-kurvorna** (Fas 6.2): `apply_non_track_sound` nollar kurvornas
     // `last_sent` och skickar hela kedjan till motorn, så ångringen **hörs** och inte bara syns.
     self.apply_non_track_sound(&snapshot.non_track);
+    self.bpm = snapshot.bpm;
+    self.tempo_points = snapshot.tempo_points.clone();
     self.selected_timeline_track = snapshot.selected_timeline_track;
     self.selected_audio_region = snapshot.selected_audio_region;
     self.song_time = snapshot.song_time;

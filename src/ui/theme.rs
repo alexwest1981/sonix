@@ -243,9 +243,9 @@ impl Default for Palette {
             text_muted: [140, 150, 168, 255],
             orange: [255, 140, 25, 255],
             green: [46, 204, 113, 255],
-            red: [231, 76, 60, 255],
+            red: [234, 102, 88, 255],
             cyan: [0, 215, 255, 255],
-            purple: [172, 97, 245, 255],
+            purple: [179, 111, 246, 255],
             yellow: [255, 215, 0, 255],
             track_cyan: [44, 132, 180, 255],
             track_magenta: [148, 84, 176, 255],
@@ -280,24 +280,28 @@ impl Palette {
             border_soft: [176, 184, 198, 255],
             text: [28, 32, 40, 255],
             text_muted: [92, 100, 114, 255],
-            orange: [205, 92, 0, 255],
+            // **Accenterna är text, inte bara fyllning.** Mot panel_alt gav den gamla
+            // orange 3,72:1, amber 3,68:1 och gul 4,45:1 — under AA för text (EGM 3,
+            // fynd 15). Värdena är valda så att de klarar 4,5:1 mot den ljusaste ytan;
+            // nyansen är den samma, bara mörkare.
+            orange: [178, 80, 0, 255],
             green: [16, 124, 62, 255],
             red: [186, 38, 30, 255],
             cyan: [0, 116, 168, 255],
             purple: [104, 44, 176, 255],
-            yellow: [146, 106, 0, 255],
+            yellow: [141, 102, 0, 255],
             track_cyan: [32, 108, 152, 255],
             track_magenta: [134, 62, 158, 255],
-            track_orange: [178, 90, 24, 255],
+            track_orange: [170, 86, 23, 255],
             track_green: [30, 122, 84, 255],
             track_teal: [30, 116, 126, 255],
             track_blue: [58, 96, 164, 255],
             track_rose: [150, 62, 92, 255],
-            track_amber: [146, 112, 28, 255],
+            track_amber: [136, 104, 26, 255],
             track_violet: [96, 78, 160, 255],
             track_steel: [86, 96, 116, 255],
-            cable: [120, 100, 220, 255],
-            amber: [176, 112, 32, 255],
+            cable: [109, 88, 217, 255],
+            amber: [151, 96, 28, 255],
             scrim: [0, 0, 0, 90],
         }
     }
@@ -818,6 +822,38 @@ mod contrast_tests {
                 assert!(r >= 4.5, "{:?}: text mot yta gav {r:.2}:1", palette.mode);
                 let muted = ratio(palette.text_muted, surface);
                 assert!(muted >= 3.0, "{:?}: dämpad text gav {muted:.2}:1", palette.mode);
+            }
+        }
+    }
+
+    /// **Accenterna är text.** De används som etikett- och rubrikfärg överallt (`pal.orange()`,
+    /// `pal.cyan()`, spårfärger i namnfältet), så de måste klara 4,5:1 mot de tre ytorna — inte
+    /// bara `text` och `text_muted`. Provet är det som fångade att ljus orange låg på 3,72:1.
+    #[test]
+    fn light_mode_keeps_the_accents_readable_as_text() {
+        let named = |p: &Palette| {
+            [
+                ("orange", p.orange),
+                ("green", p.green),
+                ("red", p.red),
+                ("cyan", p.cyan),
+                ("purple", p.purple),
+                ("yellow", p.yellow),
+                ("amber", p.amber),
+                ("cable", p.cable),
+                // Spårfärgerna står **utanför** det här provet med flit: de är fyllning för
+                // klipp, och i mörkt läge ligger flera av dem på 3,2–4,5:1 som text (mätt
+                // 2026-11-02: track_magenta 3,23, track_rose 3,24, track_violet 3,56). Att
+                // ljusa upp elva färger ändrar hela arrangörens utseende — det är ett beslut
+                // om design, inte en buggfix, och står i `docs/EGM-SONIX-GUI.md`.
+            ]
+        };
+        for palette in [Palette::default(), Palette::light()] {
+            for (name, colour) in named(&palette) {
+                for surface in [palette.panel, palette.bg, palette.panel_alt] {
+                    let r = ratio(colour, surface);
+                    assert!(r >= 4.5, "{:?}: {name} mot yta gav {r:.2}:1", palette.mode);
+                }
             }
         }
     }

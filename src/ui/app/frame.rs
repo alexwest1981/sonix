@@ -27,27 +27,31 @@ pub(crate) fn nav_group_of(view: ViewMode) -> u8 {
     }
 }
 
-/// Alla vyer i den ordning flikarna listar dem.
-pub(crate) const VIEW_ORDER: [ViewMode; 14] = [
-    ViewMode::ChannelRack,
-    ViewMode::PianoRoll,
-    ViewMode::VocalStudio,
-    ViewMode::AlchemySynth,
-    ViewMode::SessionDrummer,
-    ViewMode::ModularPatcher,
-    ViewMode::AiMusicAssistant,
-    ViewMode::Suno,
-    ViewMode::PlaylistArranger,
-    ViewMode::Video,
-    ViewMode::EffectsMixer,
-    ViewMode::RemixFx,
-    ViewMode::StemSeparator,
-    ViewMode::PluginManager,
+/// Flikarna: grupp, yta och den korta etiketten i flikraden. **Ordningen är `ViewMode::ALL`s**,
+/// så flikraden och Tab går samma väg (se `the_tab_row_and_the_tab_key_walk_the_same_order`).
+pub(crate) const VIEWS: [(u8, ViewMode, &str); 14] = [
+    (0, ViewMode::ChannelRack, "🥁 Rack"),
+    (0, ViewMode::PianoRoll, "🎹 Piano"),
+    (0, ViewMode::VocalStudio, "🎙 Sångstudio"),
+    (0, ViewMode::AlchemySynth, "✨ Alchemy"),
+    (0, ViewMode::SessionDrummer, "🥁 Trummor"),
+    (3, ViewMode::ModularPatcher, "🧩 Patcher"),
+    (0, ViewMode::AiMusicAssistant, "🤖 AI"),
+    (0, ViewMode::Suno, "☀ Suno"),
+    (1, ViewMode::PlaylistArranger, "🎼 Tidslinje"),
+    (1, ViewMode::Video, "🎬 Video"),
+    (2, ViewMode::EffectsMixer, "🎚 Mixer"),
+    (2, ViewMode::RemixFx, "🎛 Remix"),
+    (3, ViewMode::StemSeparator, "🧠 Stems"),
+    (3, ViewMode::PluginManager, "🔌 Plugins"),
 ];
 
 /// Första vyn i en flik — målet när fliken inte minns något som hör dit.
 pub(crate) fn first_view_of(group: u8) -> Option<ViewMode> {
-    VIEW_ORDER.into_iter().find(|v| nav_group_of(*v) == group)
+    VIEWS
+        .iter()
+        .map(|(_, view, _)| *view)
+        .find(|v| nav_group_of(*v) == group)
 }
 
 /// Sant när gruppen har minst en vy. Fliken får inte byta till en grupp som saknar mål.
@@ -814,6 +818,14 @@ impl SonixApp {
                 if i.key_pressed(egui::Key::I) {
                     self.show_suno_import_modal = true;
                 }
+                // Verktygsradens ledtrådar lovade Ctrl+R och Ctrl+T i månader utan att någon
+                // hade bundit dem (EGM 3, fynd 18). En etikett som gissar är värre än ingen.
+                if i.key_pressed(egui::Key::R) {
+                    self.show_fx_rack_modal = true;
+                }
+                if i.key_pressed(egui::Key::T) {
+                    self.show_tuner_modal = true;
+                }
                 if i.key_pressed(egui::Key::E) {
                     self.open_export_modal();
                 }
@@ -1475,9 +1487,24 @@ impl SonixApp {
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(crate::i18n::t("BPM")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
-                            ui.add_sized(Vec2::new(38.0, 18.0), egui::Label::new(egui::RichText::new(format!("{:.1}", self.bpm)).monospace().strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan())));
-                            if ui.button(crate::i18n::t("▲")).clicked() && self.bpm < 240.0 { self.bpm += 1.0; }
-                            if ui.button(crate::i18n::t("▼")).clicked() && self.bpm > 40.0 { self.bpm -= 1.0; }
+                            // **Tempot går att skriva** (EGM 3, fynd 6): förut bara ▲/▼ i
+                            // ett steg, så 124 → 140 var sexton klick, och ett decimaltempo
+                            // gick inte alls. Ett `DragValue` drar med musen, tar emot text på
+                            // klick och behåller en decimal. Ångringen tas när interaktionen
+                            // börjar — ett drag ger ett steg i historiken, inte sextio.
+                            let bpm_resp = ui.add_sized(
+                                Vec2::new(58.0, 20.0),
+                                egui::DragValue::new(&mut self.bpm)
+                                    .range(40.0..=240.0)
+                                    .speed(0.1)
+                                    .max_decimals(1),
+                            );
+                            if bpm_resp.drag_started() || bpm_resp.gained_focus() {
+                                self.push_undo("🎚 Tempot");
+                            }
+                            if bpm_resp.changed() {
+                                self.bpm = self.bpm.clamp(40.0, 240.0);
+                            }
 
                             ui.separator();
 
@@ -1613,7 +1640,13 @@ impl SonixApp {
                     ui.separator();
 
                     // Export WAV Button
-                    let export_label = if self.pattern_mode { "💾 EXPORT PAT" } else { "💾 EXPORT SONG" };
+                    // Exportradens etiketter var literaler medan resten av raden gick genom
+                    // `t()` — samma rad var svensk, engelsk och spansk samtidigt (EGM 3, fynd 14).
+                    let export_label = if self.pattern_mode {
+                        crate::i18n::t("💾 EXPORT PAT")
+                    } else {
+                        crate::i18n::t("💾 EXPORT SONG")
+                    };
                     if ui.add(egui::Button::new(egui::RichText::new(export_label).strong().size(Theme::FONT_S).color(crate::ui::theme::readable_on(crate::ui::theme::palette().text_muted()))).fill(crate::ui::theme::palette().text_muted())).clicked() {
                         self.export_wav();
                     }
@@ -1686,22 +1719,6 @@ impl SonixApp {
                     let active_group = nav_group_of(self.view_mode);
                     ui.add_space(16.0);
 
-                    const VIEWS: [(u8, ViewMode, &str); 14] = [
-                        (0, ViewMode::ChannelRack, "🥁 Rack"),
-                        (0, ViewMode::PianoRoll, "🎹 Piano"),
-                        (0, ViewMode::VocalStudio, "🎙 Sångstudio"),
-                        (0, ViewMode::AlchemySynth, "✨ Alchemy"),
-                        (0, ViewMode::SessionDrummer, "🥁 Trummor"),
-                        (3, ViewMode::ModularPatcher, "🧩 Patcher"),
-                        (0, ViewMode::AiMusicAssistant, "🤖 AI"),
-                        (0, ViewMode::Suno, "☀ Suno"),
-                        (1, ViewMode::PlaylistArranger, "🎼 Tidslinje"),
-                        (1, ViewMode::Video, "🎬 Video"),
-                        (2, ViewMode::EffectsMixer, "🎚 Mixer"),
-                        (2, ViewMode::RemixFx, "🎛 Remix"),
-                        (3, ViewMode::StemSeparator, "🧠 Stems"),
-                        (3, ViewMode::PluginManager, "🔌 Plugins"),
-                    ];
                     // Samma flikar i andra nivån: bara den valda gruppens ytor, och den valda
                     // ytan är den flik som ligger i ytan under.
                     let group_views: Vec<(ViewMode, &str)> = VIEWS
@@ -1816,7 +1833,7 @@ impl SonixApp {
                     egui::SidePanel::right("sonix_dock")
                         .resizable(true)
                         .default_width(470.0)
-                        .min_width(320.0)
+                        .min_width(280.0)
                         .frame(
                             egui::Frame::none()
                                 .fill(crate::ui::theme::palette().panel())
@@ -1918,5 +1935,28 @@ impl SonixApp {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod nav_order_tests {
+    use super::*;
+
+    /// **Flikraden och Tab måste gå i samma ordning.** De var tre listor i två filer och hade
+    /// glidit isär, så "nästa yta" hoppade i en ordning som inte syntes någonstans i ytan.
+    #[test]
+    fn the_tab_row_and_the_tab_key_walk_the_same_order() {
+        let from_row: Vec<ViewMode> = VIEWS.iter().map(|(_, view, _)| *view).collect();
+        assert_eq!(from_row, ViewMode::ALL.to_vec());
+    }
+
+    /// Varje yta har en flik, och varje flik en yta — annars går en yta inte att nå.
+    #[test]
+    fn every_surface_has_exactly_one_tab() {
+        let mut seen = std::collections::HashSet::new();
+        for (_, view, _) in VIEWS {
+            assert!(seen.insert(view), "ytan har två flikar: {view:?}");
+        }
+        assert_eq!(seen.len(), ViewMode::ALL.len());
     }
 }

@@ -1542,6 +1542,8 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             vca_faders,
             vca_muted,
             vca_solos,
+            bpm: 120.0,
+            tempo_points: Vec::new(),
             non_track: non_track_base(),
             selected_timeline_track: 0,
             selected_audio_region: None,
@@ -2756,8 +2758,11 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             view = view.next();
         }
         assert_eq!(view, ViewMode::ChannelRack, "efter ett varv är vi tillbaka");
-        assert_eq!(ViewMode::ChannelRack.prev(), ViewMode::EffectsMixer);
-        assert_eq!(ViewMode::EffectsMixer.next(), ViewMode::ChannelRack);
+        // Sista ytan läses ur listan, inte ur minnet: ordningen är `ViewMode::ALL`s och
+        // `frame::VIEWS` följer den (provat i `nav_order_tests`).
+        let last = *ViewMode::ALL.last().unwrap();
+        assert_eq!(ViewMode::ChannelRack.prev(), last);
+        assert_eq!(last.next(), ViewMode::ChannelRack);
 
         let unique: std::collections::HashSet<String> =
             ViewMode::ALL.iter().map(|v| format!("{v:?}")).collect();

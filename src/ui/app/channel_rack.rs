@@ -116,7 +116,12 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                 let ch_btn = egui::Button::new(egui::RichText::new(format!("{} {}", ch.icon, ch.name)).strong().color(ch.color))
                     .fill(btn_fill)
                     .wrap_mode(egui::TextWrapMode::Truncate);
-                let ch_resp = ui.add_sized(Vec2::new(200.0, 26.0), ch_btn);
+                // Ett namn som slutar i "…" ska gå att läsa någonstans — ledtråden bär hela
+                // namnet (EGM 3, fynd 19).
+                let full_channel_name = format!("{} {}", ch.icon, ch.name);
+                let ch_resp = ui
+                    .add_sized(Vec2::new(200.0, 26.0), ch_btn)
+                    .on_hover_text(full_channel_name);
                 if ch_resp.clicked() {
                     self.selected_channel = ch_idx;
                 }

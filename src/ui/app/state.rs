@@ -22,7 +22,7 @@ pub(crate) fn note_name(note: u8) -> &'static str {
     names[(note % 12) as usize]
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ViewMode {
     ChannelRack,
     PianoRoll,
@@ -41,22 +41,27 @@ pub enum ViewMode {
 }
 
 impl ViewMode {
-    /// Ytorna i den ordning Tab går genom dem.
+    /// Ytorna i den ordning Tab går genom dem — **samma ordning som flikraden visar**.
+    ///
+    /// Ordningen var tre listor i två filer (den här, `VIEW_ORDER` och `VIEWS` i `frame.rs`)
+    /// och de hade glidit isär: Tab hoppade i en ordning ingen såg i gränssnittet (EGM 3).
+    /// Nu är det här ordningen, `VIEWS` bär etiketterna, och `the_tab_row_and_the_tab_key_walk_the_same_order`
+    /// faller om de två går isär igen.
     pub const ALL: [ViewMode; 14] = [
         ViewMode::ChannelRack,
         ViewMode::PianoRoll,
-        ViewMode::PlaylistArranger,
-        ViewMode::SessionDrummer,
-        ViewMode::AlchemySynth,
-        ViewMode::RemixFx,
         ViewMode::VocalStudio,
+        ViewMode::AlchemySynth,
+        ViewMode::SessionDrummer,
+        ViewMode::ModularPatcher,
         ViewMode::AiMusicAssistant,
         ViewMode::Suno,
-        ViewMode::ModularPatcher,
-        ViewMode::StemSeparator,
+        ViewMode::PlaylistArranger,
         ViewMode::Video,
-        ViewMode::PluginManager,
         ViewMode::EffectsMixer,
+        ViewMode::RemixFx,
+        ViewMode::StemSeparator,
+        ViewMode::PluginManager,
     ];
 
     /// Nästa yta, med omslag från sista till första.

@@ -25,6 +25,10 @@ pub struct HarmonyVoice {
 #[derive(Debug, Clone)]
 pub struct VocalHarmonizer {
     pub autotune_speed: f32, // 0.0 (Natural) .. 1.0 (Hard Robot T-Pain)
+    /// **Hur mycket** rösten dras mot skalan. Låg hastighet med hög styrka är en naturlig
+    /// korrigering; hög hastighet med låg styrka är knappt hörbar. Fälten var samma värde
+    /// förut — en ratt styrde båda, så de två lägena gick inte att ställa in (EGM 3, fynd 17).
+    pub autotune_strength: f32,
     pub target_scale: usize, // 0: Chromatic, 1: Major, 2: Minor, etc.
     pub root_note: i32,      // 0 = C, 9 = A
     pub blobs: Vec<PitchBlob>,
@@ -41,6 +45,7 @@ impl Default for VocalHarmonizer {
     fn default() -> Self {
         Self {
             autotune_speed: 0.75,
+            autotune_strength: 0.75,
             target_scale: 2, // A Minor
             root_note: 9,
             blobs: Vec::new(),

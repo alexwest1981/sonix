@@ -80,11 +80,14 @@ pub fn render_vocal_studio_view(
                             rotary_knob(ui, &mut vocal_track.monitor_level, 0.0, 1.0, "MONITOR", crate::ui::theme::palette().cyan(), 18.0);
                         }
                         ui.checkbox(&mut vocal_track.realtime_autotune, crate::i18n::t("🎙️ Realtids-Auto-Tune"))
-                            .on_hover_text(crate::i18n::t("Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)"));
+                            .on_hover_text(crate::i18n::t("Korrigerar mikrofonen i realtid mot vald skala (STYRKA och HASTIGHET)"));
 
                         ui.separator();
                         rotary_knob(ui, &mut vocal_track.input_gain, 0.0, 2.5, "GAIN", crate::ui::theme::palette().yellow(), 18.0);
-                        rotary_knob(ui, &mut harmonizer.autotune_speed, 0.0, 1.0, "AUTO-TUNE", crate::ui::theme::palette().orange(), 18.0);
+                        // Två rattar, två parametrar: HASTIGHET (0 = naturlig, 1 = robot) och
+                        // STYRKA (hur långt mot skalan rösten dras). De delade ett värde förut.
+                        rotary_knob(ui, &mut harmonizer.autotune_speed, 0.0, 1.0, "HASTIGHET", crate::ui::theme::palette().orange(), 18.0);
+                        rotary_knob(ui, &mut harmonizer.autotune_strength, 0.0, 1.0, "STYRKA", crate::ui::theme::palette().amber(), 18.0);
 
                         ui.separator();
 

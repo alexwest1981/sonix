@@ -966,7 +966,7 @@ impl SonixApp {
                     icon_c,
                     egui::Align2::CENTER_CENTER,
                     icon,
-                    egui::FontId::proportional(20.0),
+                    egui::FontId::proportional(Theme::FONT_L),
                     accent_color,
                 );
 
@@ -983,11 +983,21 @@ impl SonixApp {
                 } else {
                     track_color
                 };
-                ui.painter().text(
-                    Pos2::new(h_rect.min.x + 60.0, h_rect.min.y + 20.0),
-                    egui::Align2::LEFT_CENTER,
-                    display_name,
-                    egui::FontId::proportional(if is_mic_track { 14.0 } else { 13.5 }),
+                // Namnet mäts mot den plats det har. Utan mått ritar `painter().text` hur långt
+                // som helst och ett långt namn hamnar ute i tidslinjen över klippen (EGM 3).
+                let name_font = egui::FontId::proportional(if is_mic_track {
+                    Theme::FONT_M
+                } else {
+                    Theme::FONT_S
+                });
+                let name_w = (h_rect.max.x - 12.0) - (h_rect.min.x + 60.0);
+                let galley = ui.painter().layout(display_name, name_font, title_col, name_w);
+                ui.painter().galley(
+                    Pos2::new(
+                        h_rect.min.x + 60.0,
+                        h_rect.min.y + 20.0 - galley.size().y * 0.5,
+                    ),
+                    galley,
                     title_col,
                 );
 
@@ -1379,7 +1389,7 @@ impl SonixApp {
                             Pos2::new(x + 5.0, band.center().y),
                             egui::Align2::LEFT_CENTER,
                             &section.name,
-                            egui::FontId::proportional(11.0),
+                            egui::FontId::proportional(Theme::FONT_XS),
                             crate::ui::theme::readable_on(crate::ui::theme::palette().purple()),
                         );
                         ui.painter().line_segment(
@@ -1834,8 +1844,10 @@ impl SonixApp {
                                             Pos2::new(r_rect.min.x + 5.0, r_rect.min.y + 7.0),
                                             egui::Align2::LEFT_CENTER,
                                             title_text,
-                                            // Klippetiketten: Soundtrap har 13–15 px på sina regioner.
-                                            egui::FontId::proportional(13.5),
+                                            // Klippetiketten: skalans `FONT_S`. Den stod på
+                                            // 13,5 px, en fjärde storlek som ingen annan plats
+                                            // använde (EGM 3, fynd 16).
+                                            egui::FontId::proportional(Theme::FONT_S),
                                             header_text_col,
                                         );
 

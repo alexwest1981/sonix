@@ -1464,7 +1464,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([780.0, 540.0])
+            // **1024 × 600, inte 780 × 540** (EGM 3, fynd 8): browser 200 + dock 320 +
+            // spårhuvud 228 lämnade 32 px tidslinje vid 780, alltså ett arrangemang man
+            // bara kunde scrolla blint i. 1024 ger 276 px, och docken får krympa till 280.
+            .with_min_inner_size([1024.0, 600.0])
             .with_title("🎹 Sonix DAW - Linux Audio Workstation")
             .with_app_id("sonix-daw")
     };

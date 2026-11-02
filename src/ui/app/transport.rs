@@ -2172,7 +2172,7 @@ pub(crate) fn sync_mic_monitoring(&mut self) {
     }
     self.vocal_studio.sync_live_effects(
         self.vocal_studio.realtime_autotune,
-        self.vocal_harmonizer.autotune_speed,
+        self.vocal_harmonizer.autotune_strength,
         self.vocal_harmonizer.autotune_speed,
         self.vocal_harmonizer.root_note,
         self.vocal_harmonizer.target_scale,

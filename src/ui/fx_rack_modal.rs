@@ -1523,7 +1523,7 @@ fn render_gain_reduction_scope(ui: &mut Ui, history: &std::collections::VecDeque
             Pos2::new(rect.left() + 3.0, y),
             egui::Align2::LEFT_TOP,
             format!("{db:.0}"),
-            egui::FontId::monospace(9.0),
+            egui::FontId::monospace(crate::ui::theme::Theme::FONT_XS),
             palette.text_muted(),
         );
     }
