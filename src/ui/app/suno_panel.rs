@@ -464,15 +464,28 @@ impl SonixApp {
             for (index, title, seconds, has_file) in rows {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(title).size(Theme::FONT_S));
-                    if let Some(seconds) = seconds {
-                        ui.label(
-                            RichText::new(format!("{seconds:.0}s"))
-                                .size(Theme::FONT_XS)
-                                .color(palette().text_muted()),
-                        );
+                    let ready = seconds.is_some() || has_file;
+                    match seconds {
+                        Some(seconds) => {
+                            ui.label(
+                                RichText::new(format!("{seconds:.0}s"))
+                                    .size(Theme::FONT_XS)
+                                    .color(palette().text_muted()),
+                            );
+                        }
+                        None if !has_file => {
+                            // Är den inte klar än står det — i stället för att raden ser död ut.
+                            ui.spinner();
+                            ui.label(
+                                RichText::new(crate::i18n::t("skapar…"))
+                                    .size(Theme::FONT_XS)
+                                    .color(palette().text_muted()),
+                            );
+                        }
+                        None => {}
                     }
                     if ui
-                        .add_enabled(!busy, egui::Button::new(crate::i18n::t("🎧 Lyssna")))
+                        .add_enabled(!busy && ready, egui::Button::new(crate::i18n::t("🎧 Lyssna")))
                         .on_hover_text(crate::i18n::t("Hämtar filen — 1 nedladdningskredit"))
                         .clicked()
                     {
@@ -492,6 +505,11 @@ impl SonixApp {
                     }
                 });
             }
+            ui.horizontal(|ui| {
+                if ui.button(crate::i18n::t("🔄 Uppdatera status")).clicked() {
+                    self.suno_load_clip_titles();
+                }
+            });
             if let Some(index) = audition {
                 self.suno_audition(index);
             }

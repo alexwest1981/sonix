@@ -278,6 +278,22 @@ impl SunoSession {
         // with all of them in ids".
         let first = expand(&result);
         let ids = clip_ids(&first);
+        // **Ett svar med flera clips är färdigt att visas.** Att vänta i minuter på att de blir
+        // "complete" gjorde att panelen stod still utan besked; nu får UI:t id:na direkt och
+        // fyller på titel och längd när de är klara.
+        if ids.len() > 1 {
+            let payload = expand(&result);
+            let done = payload.to_string().to_lowercase().contains("\"complete\"");
+            if !done {
+                return Ok(GeneratedSong {
+                    files: Vec::new(),
+                    stems: false,
+                    title: find_string(&payload, &["title", "song_title"]).unwrap_or_default(),
+                    raw: result,
+                    clip_ids: ids,
+                });
+            }
+        }
         if let (Some(status), true) = (status, !ids.is_empty()) {
             for attempt in 1..=POLL_TRIES {
                 if !audio_urls(&expand(&result)).is_empty() {
