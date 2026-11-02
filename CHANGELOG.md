@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.236] - 2026-11-02
+
+### Fixed
+- **Releasebygget kompilerade inte.** `audio::resample` var gate:ad bakom `neural`, men
+  `neural_separator::stems_at_rate` anropar den obetingat. `--no-default-features` föll med
+  `error[E0433]: cannot find resample in audio`, och CI var röd på alla tre jobben (även release).
+  Modulen är ren DSP utan ONNX-beroende och byggs nu alltid.
+
+### Changed
+- `ui/app/mixer.rs` (4 656 rader, fyra ytor i en fil) utdelad i `mixer.rs`, `channel_rack.rs`,
+  `fx_mixer_rack.rs` och `synth_rack.rs`.
+- Vågformen i arrangern klipps mot det synliga området i stället för att rita hela regionens bredd
+  varje bildruta: en 127-taktsregion på 7 620 px ritade 7 620 segment per bildruta även när 1 200 px
+  syntes. Slingade regioner och zoomregimen är oförändrade.
+
+Se `docs/EGM-SONIX-ROUND2.md`.
+
 ## [0.9.235] - 2026-11-02
 
 **Tio mätta fel rättade efter EGM-genomgången** (`docs/EGM-SONIX-REVIEW.md`).

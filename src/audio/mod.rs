@@ -24,9 +24,8 @@ pub mod lua_script;
 // links libpython, and `run_named` says so instead of quietly running Rhai on a `.py` script.
 #[cfg(feature = "python")]
 pub mod python_script;
-// Bara den neurala separatorn omsamplar (modellerna går i 48 kHz). Utan `neural` finns ingen
-// anropare, och då ska modulen inte heller byggas — annars är den tre döda varningar.
-#[cfg(feature = "neural")]
+// Omsampningen är ren DSP utan ONNX-beroende, och `neural_separator::stems_at_rate`
+// anropar den även i en build utan `neural` — därför får den inte vara gated.
 pub mod resample;
 pub mod script;
 pub mod control_room;

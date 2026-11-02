@@ -1890,6 +1890,31 @@ impl SonixApp {
                                             // precis då startpunkten blir svår att pricka.
                                             let draw_start_x = r_rect.min.x;
                                             let draw_end_x = r_rect.max.x;
+                                            // Bara det som syns: en 127-taktsregion är
+                                            // 7 620 px bred vid standardzoom, och hela
+                                            // bredden ritades förr i varje bildruta.
+                                            // Slingade regioner hoppas över — deras
+                                            // bildpunkter följer upprepningen.
+                                            let full_w = (r_rect.max.x - r_rect.min.x).max(1.0);
+                                            let vis = r_rect.intersect(ui.clip_rect());
+                                            let cull = !is_looped && vis.width() > 1.0;
+                                            let (draw_start_x, draw_end_x) = if cull {
+                                                (vis.min.x, vis.max.x)
+                                            } else {
+                                                (draw_start_x, draw_end_x)
+                                            };
+                                            let vis0 = if cull {
+                                                ((draw_start_x - r_rect.min.x) / full_w)
+                                                    .clamp(0.0, 1.0) as f64
+                                            } else {
+                                                0.0
+                                            };
+                                            let vis1 = if cull {
+                                                ((draw_end_x - r_rect.min.x) / full_w)
+                                                    .clamp(0.0, 1.0) as f64
+                                            } else {
+                                                1.0
+                                            };
                                             let (cache, pcm, sr) = wave;
                                             let region_secs = self
                                                 .tempo_map()
@@ -1914,11 +1939,17 @@ impl SonixApp {
                                                 self.tempo_map()
                                                     .bpm_at(region.start_bar as f64),
                                             );
-                                            let total_samples = region_source_span_samples(
+                                            let span_samples = region_source_span_samples(
                                                 region_secs,
                                                 region_rate,
                                                 sr,
                                             );
+                                            // Det synliga fönstret är en delmängd av
+                                            // regionen: samma bildpunkter, kortare spann.
+                                            let total_samples =
+                                                ((span_samples as f64 * (vis1 - vis0)) as usize).max(1);
+                                            let start_sample =
+                                                start_sample + (span_samples as f64 * vis0) as usize;
                                             let cols =
                                                 ((draw_end_x - draw_start_x).max(1.0)).ceil() as usize;
                                             // En slingad kloss upprepar ett kortare
@@ -1965,8 +1996,12 @@ impl SonixApp {
                                             // sin egen bildpunkt. Att rita finare kolumner
                                             // gör den aldrig tydligare — representationen
                                             // måste bytas.
+                                            // Regimen räknas på HELA regionen, inte på det
+                                            // synliga fönstret: annars kunde klippningen byta
+                                            // representation vid en skrollkant.
+                                            let full_cols = (r_rect.width().max(1.0)).ceil();
                                             match crate::audio::waveform::zoom_regime(
-                                                total_samples as f64 / cols as f64,
+                                                span_samples as f64 / full_cols as f64,
                                             ) {
                                                 crate::audio::waveform::ZoomRegime::Envelope => {
                                                     let mut x = start_x;
@@ -2056,8 +2091,11 @@ impl SonixApp {
                                             );
 
                                             // Draw vertical waveform bars across the entire region width
-                                            let draw_start_x = r_rect.min.x + 2.0;
-                                            let draw_end_x = r_rect.max.x - 2.0;
+                                            // Samma klippning här: bildpunkter utanför
+                                            // vyn kostade förut lika mycket som de synliga.
+                                            let vis = r_rect.intersect(ui.clip_rect());
+                                            let draw_start_x = (r_rect.min.x + 2.0).max(vis.min.x);
+                                            let draw_end_x = (r_rect.max.x - 2.0).min(vis.max.x);
                                             let step_px = 3.0_f32;
                                             let mut cur_x = draw_start_x;
                                             while cur_x <= draw_end_x {

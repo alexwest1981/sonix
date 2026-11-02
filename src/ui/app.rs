@@ -70,6 +70,9 @@ mod timeline;
 pub use timeline::*;
 
 mod mixer;
+mod channel_rack;
+mod fx_mixer_rack;
+mod synth_rack;
 pub use mixer::*;
 
 mod transport;
