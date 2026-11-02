@@ -829,6 +829,57 @@ pub fn tabs(ui: &mut Ui, labels: &[&str], active: usize, font: f32) -> Option<us
     clicked
 }
 
+/// True when a row's content no longer fits the width it was given, so the row has to
+/// scroll sideways instead of being clipped at the right edge.
+pub fn needs_horizontal_scroll(content_w: f32, available_w: f32) -> bool {
+    content_w > available_w + 0.5
+}
+
+/// Lays `add` out as one non-wrapping row, scrolling sideways when `content_w` does not
+/// fit. egui clips what runs past the edge, which used to make the last step buttons
+/// unreachable in a narrow panel.
+pub fn horizontal_scroll_row<R>(
+    ui: &mut Ui,
+    id_salt: impl std::hash::Hash,
+    content_w: f32,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    if needs_horizontal_scroll(content_w, ui.available_width()) {
+        egui::ScrollArea::horizontal()
+            .id_salt(id_salt)
+            .auto_shrink([false, true])
+            .show(ui, |ui| ui.horizontal(add).inner)
+            .inner
+    } else {
+        ui.horizontal(add).inner
+    }
+}
+
+#[cfg(test)]
+mod row_tests {
+    use super::needs_horizontal_scroll;
+
+    /// The boundary: a row that fits exactly does not scroll; anything wider than the
+    /// space it was given does.
+    #[test]
+    fn a_row_scrolls_only_once_its_content_is_wider_than_the_space() {
+        let cases = [
+            (0.0, 0.0, false),
+            (319.0, 320.0, false),
+            (320.0, 320.0, false),
+            (320.5, 320.0, false),
+            (321.0, 320.0, true),
+            (980.0, 320.0, true),
+            (980.0, 470.0, true),
+        ];
+        for (content_w, available_w, want) in cases {
+            let got = needs_horizontal_scroll(content_w, available_w);
+            println!("content {content_w:6.1} px, available {available_w:6.1} px -> scroll {got}");
+            assert_eq!(got, want, "content {content_w} px in {available_w} px");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tab_tests {
     use super::tabs;

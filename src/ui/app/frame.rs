@@ -1529,36 +1529,42 @@ impl SonixApp {
 
                     // Pattern Quick Selector
                     ui.group(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("PAT:")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
-                            let p_len = self.patterns.len();
-                            for pat_idx in 0..p_len {
-                                let is_active = self.selected_pattern == pat_idx;
-                                let p_color = self.patterns[pat_idx].color;
-                                let fill = if is_active { p_color } else { crate::ui::theme::palette().panel() };
-                                let text_color = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
-                                if ui.add(egui::Button::new(egui::RichText::new(format!("P{}", pat_idx + 1)).strong().size(Theme::FONT_XS).color(text_color)).fill(fill)).clicked() {
-                                    self.select_pattern(pat_idx);
-                                }
-                            }
-                            // Fånga in det som spelas som en ny slinga (Abletons
-                            // Capture and Insert Scene). Källan blir kvar.
-                            if ui
-                                .add(egui::Button::new(egui::RichText::new("🎯").size(Theme::FONT_XS)).fill(crate::ui::theme::palette().panel()))
-                                .on_hover_text(crate::i18n::t("Fånga in den valda slingan som en ny slinga"))
-                                .clicked()
-                            {
-                                self.capture_pattern();
-                            }
-                            // FL:s Clone pattern: en kopia att göra varianten i.
-                            if ui
-                                .add(egui::Button::new(egui::RichText::new("⧉").size(Theme::FONT_XS)).fill(crate::ui::theme::palette().panel()))
-                                .on_hover_text(crate::i18n::t("Kopiera mönstret — originalet rörs inte"))
-                                .clicked()
-                            {
-                                self.duplicate_selected_pattern();
-                            }
-                        });
+                        // Many patterns used to run past the right edge in one `horizontal`;
+                        // the strip scrolls sideways so every button stays clickable.
+                        egui::ScrollArea::horizontal()
+                            .id_salt("pattern_toolbar")
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(crate::i18n::t("PAT:")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
+                                    let p_len = self.patterns.len();
+                                    for pat_idx in 0..p_len {
+                                        let is_active = self.selected_pattern == pat_idx;
+                                        let p_color = self.patterns[pat_idx].color;
+                                        let fill = if is_active { p_color } else { crate::ui::theme::palette().panel() };
+                                        let text_color = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
+                                        if ui.add(egui::Button::new(egui::RichText::new(format!("P{}", pat_idx + 1)).strong().size(Theme::FONT_XS).color(text_color)).fill(fill)).clicked() {
+                                            self.select_pattern(pat_idx);
+                                        }
+                                    }
+                                    // Fånga in det som spelas som en ny slinga (Abletons
+                                    // Capture and Insert Scene). Källan blir kvar.
+                                    if ui
+                                        .add(egui::Button::new(egui::RichText::new("🎯").size(Theme::FONT_XS)).fill(crate::ui::theme::palette().panel()))
+                                        .on_hover_text(crate::i18n::t("Fånga in den valda slingan som en ny slinga"))
+                                        .clicked()
+                                    {
+                                        self.capture_pattern();
+                                    }
+                                    // FL:s Clone pattern: en kopia att göra varianten i.
+                                    if ui
+                                        .add(egui::Button::new(egui::RichText::new("⧉").size(Theme::FONT_XS)).fill(crate::ui::theme::palette().panel()))
+                                        .on_hover_text(crate::i18n::t("Kopiera mönstret — originalet rörs inte"))
+                                        .clicked()
+                                    {
+                                        self.duplicate_selected_pattern();
+                                    }
+                                });
+                            });
                     });
 
                     ui.separator();
@@ -1732,7 +1738,13 @@ impl SonixApp {
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(8.0, 2.0);
-                    ui.label(egui::RichText::new(&self.status_message).size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
+                    // A long message (e.g. a full unreadable-files list) must not wrap the bar
+                    // to four lines and shrink the workspace: one truncated line, full text on hover.
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(&self.status_message).size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()))
+                            .truncate(),
+                    )
+                    .on_hover_text(&self.status_message);
                     let drops = self.engine.command_drops();
                     if drops > 0 {
                         ui.label(
