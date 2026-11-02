@@ -18,7 +18,13 @@ use super::video_fx::VideoFxChain;
 /// x264 has to finish the file once stdin closes; a slow machine still needs room for it.
 const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a failing encoder gets to say why before it is killed.
+/// Vakten mot att ffmpeg aldrig lämnar tillbaka — två sekunder räcker på en tyst maskin, men
+/// under en full provsvit (1 375 prov parallellt) tog starten längre tid. Samma regel som
+/// `DECODE_TIMEOUT`: produktionsbudgeten är kvar, provbudgeten är större.
+#[cfg(not(test))]
 const EXIT_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(test)]
+const EXIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// stderr of a failing ffmpeg is a diagnostic, not a log.
 const MAX_STDERR: usize = 4096;
 

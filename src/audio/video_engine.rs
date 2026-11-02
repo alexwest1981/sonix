@@ -36,7 +36,16 @@ pub struct Frame {
 /// Small enough that a scrub over ten frames holds the whole neighbourhood, large enough
 /// that going back and forth over a cut does not re-decode.
 const CACHE_FRAMES: usize = 8;
+/// Ett hängt ffmpeg ska dödas, inte väntas på för evigt.
+///
+/// **Proven får en längre budget**: hela sviten kör 1 375 prov parallellt, och då blev ffmpeg:s
+/// *start* starved — mätt 2026-11-02 föll `random_seeks_always_return_a_whole_frame` på 5 s i
+/// full svit och gick på 3 s i isolering. Produktionens budget är oförändrad; det är vakten mot
+/// en hängning som är längre i prov, inte kravet på svarstid.
+#[cfg(not(test))]
 const DECODE_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const DECODE_TIMEOUT: Duration = Duration::from_secs(30);
 /// stderr of a failing ffmpeg is a diagnostic line, not a log — keep a human amount.
 const MAX_STDERR: usize = 4096;
 
