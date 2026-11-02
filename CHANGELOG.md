@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Tempot går att skriva och går att ångra.** BPM stod som en etikett med ▲/▼ i ett steg, så
+  124 → 140 var sexton klick och ett decimaltempo gick inte alls; och `bpm` saknades i
+  `TimelineUndoSnapshot`, så Ctrl+Z lämnade både tempot och de omsträckta klippen. Nu ett
+  `DragValue` (40–240, en decimal) och tempot i snapshotet.
+- **Ctrl+R och Ctrl+T** stod i ledtrådarna i månader utan att vara bundna. Bundna.
+- **Spårnamnet mäts mot namnfältet** i stället för att ritas hur långt som helst.
+- **Kanalnamnet har en ledtråd** med hela namnet när det slutar i `…`.
+- **Accentfärgerna är text och ska gå att läsa.** I ljust läge låg orange på 3,72:1, amber 3,68:1
+  och gul 4,45:1 mot panel_alt; i mörkt läge röd 4,27:1 och lila 4,49:1. Nya värden klarar 4,5:1,
+  och `light_mode_keeps_the_accents_readable_as_text` vaktar dem i båda lägena.
+- **Exportradens etiketter gick aldrig genom `t()`** — samma rad var svensk, engelsk och spansk
+  samtidigt. Nu i alla sex tabeller.
+
+### Changed
+- **En navigationsordning i stället för tre.** `VIEW_ORDER` är borta, `VIEWS` bär etiketterna och
+  `ViewMode::ALL` har samma ordning, så Tab och flikraden går samma väg. Två prov vaktar.
+- **Textskalan har fem steg.** 11,0 / 13,5 / 20,0 / 9,0 px flyttade till `Theme::FONT_XS/S/L`.
+- **Auto-Tune är två rattar** (HASTIGHET och STYRKA) — ett värde styrde båda parametrarna.
+- **Minsta fönstret är 1024 × 600** (var 780 × 540, där browser + dock + spårhuvud lämnade 32 px
+  tidslinje) och docken får krympa till 280.
+
+### Fixed
 - **Tre kontroller som ljög.** Masterns **PAN** skrevs bara till projektfilen och lästes av ingen
   ljudkod; masterns **BREDD** fanns som fält, startvärde och ratt — och inget mer; drivepedalens
   **TON** hade ingen läsare alls. Pan och bredd går nu genom ett kommando till `finish_master`

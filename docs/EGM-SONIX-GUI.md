@@ -81,43 +81,49 @@ både ljust och mörkt tema. Frågan: *skulle en svensk musiker och en tysk stav
 ## 3. Så avgörs rundan
 
 Ett fynd flyttas till åtgärd bara om det (a) har ett bevis som håller vid efterkontroll och (b) går
-att mäta om. Tabellen nedan är Elefantens (huvudkontextens) dom över de fem granskarnas rapporter,
-2 nov: varje rad är kontrollerad i koden efteråt. **En granskares siffra är ett påstående, inte ett
-kvitto** — där en siffra inte gick att reproducera står det.
+att mäta om. Tabellen är Elefantens (huvudkontextens) dom över de fem rapporterna, kontrollerad i
+koden efteråt och **åtgärdad samma kväll**. **En granskares siffra är ett påstående, inte ett
+kvitto** — där en siffra inte gick att reproducera står det, och två fynd föll.
 
-| # | Granskare | Fynd | Allvar | Beslut | Kontroll / mätt efteråt |
+| # | Granskare | Fynd | Allvar | Beslut | Mätt efteråt |
 | :--: | :--- | :--- | :---: | :--- | :--- |
-| 1 | G4 | **Masterns PAN** (`fx_mixer_rack.rs:394`) — `master_pan` skrivs till projektfilen och läses av ingen ljudkod; `AudioCommand::SetMasterPan` finns inte | 🔴 | **Åtgärdad** | `rg SetMasterPan src/audio` gav 0 träffar före; nu `SetMasterPanWidth` + prov på equal-power-förstärkningen (energin 2,0 i varje läge) |
-| 2 | G4 | **Masterns BREDD** (`:395`) — `stereo_width` fanns exakt tre gånger (fält, init, ratt), ingen läsare, sparas inte ens | 🔴 | **Åtgärdad** | M/S-bredd i `finish_master`; prov: bredd 0 → mono, 2 → sidan förstärkt |
-| 3 | G4 | **DRIVE-pedalens TON** (`:1056`) — `stompbox_tone` hade ingen läsare; bara DRIVE skickades | 🟡 | **Åtgärdad** | ett pol-lågpass efter mättningen; prov: 1 kHz kvar, 8 kHz dämpad |
-| 4 | G4 | **"4x12 Cab"** (`:1057`) — `stompbox_cab` läses ingenstans; en högtalarsimulering är en IR, inte en kryssruta | 🟡 | **Borttagen** | en kryssruta som inte gör något är värre än ingen kryssruta |
-| 5 | G3 | **Spårnamnet ritas över M/S/R/F** (`arranger.rs:977`) — `painter().text` utan klippning; namnfältet är 78 px, "1 Lead Vocals (Suno AI…)" är ~170 px | 🔴 | **Kvittat, ej åtgärdat** | kräver en textbreddmätning + trunkering; står först i kön |
-| 6 | G2 | **Tempot går inte att skriva** (`frame.rs:1477-1480`) — bara ▲/▼ i 1-steg; 124→140 är 16 klick och decimaltempo går inte alls | 🔴 | **Kvittat, ej åtgärdat** | kräver ett tal-fält med fokus; kön |
-| 7 | G2 | **Tempot går inte att ångra** (`timeline.rs:198`: `TimelineUndoSnapshot` saknar `bpm`; `frame.rs:1479` ändrar utan `push_undo`) | 🔴 | **Kvittat, ej åtgärdat** | samma pass som #6 |
-| 8 | G3 | **Minsta fönstret ger ingen tidslinje** — browser 200 + dock min 320 + spårhuvud 228 (`arranger.rs:121`) mot 780 | 🔴 | **Kvittat** | granskaren sa 8 px, räkningen ger **32 px** utan marginal; båda betyder oanvändbar. Kräver ett beslut: krympa docken eller höj minsta bredd |
-| 9 | G2 | **Tre navigationslistor** (`state.rs:45` `ALL`, `frame.rs:31` `VIEW_ORDER`, `frame.rs:1689` `VIEWS`) — Tab går i annan ordning än flikraden visar | 🟡 | **Kvittat** | en lista, en ordning; mekaniskt men rör tangentbordsordningen |
-| 10 | G4 | **Flik och panel har olika namn** — fliken säger "🧠 Stems", panelen "🪄 Stämmor"; "🥁 Trummor" mot "🥁 Session" | 🟡 | **Kvittat** | en strängkälla; kolliderar med flikradens bredd (kortare etiketter behövs där) |
-| 11 | G1 | **Fem fyllnadsfärger i verktygsraden** (`frame.rs:1726-1738`) | 🟡 | **Kvittat** | kräver en designregel (≤2 fyllningar per rad), inte en buggfix |
-| 12 | G3 | **`interact_size.y = 21`** (`theme.rs:567`) — varje knapp under 24 px | 🟡 | **Kvittat** | höjningen är en rad, men flyttar lay-outen på alla 14 ytor; mäts med en fångst före/efter |
-| 13 | G5 | **Sifferformat** — `format!("{:.1}", bpm)` ger "124.0" i alla språk | 🟡 | **Kvittat** | kräver en språkmedveten formatterare (99 `format!`-ställen) |
-| 14 | G5 | **Exportraden går aldrig genom `t()`** — "💾 EXPORT SONG" är svensk/engelsk/spansk samtidigt | 🟡 | **Kvittat** | 4 literaler + 6 tabeller |
-| 15 | G5 | **Ljust tema under AA för accenter** — granskaren räknade orange 4,10:1 och amber 4,05:1 på vitt (mörkt 8,33/11,20) | 🟡 | **Kvittat, ej reproducerat** | kontrastprovet prövar bara `text`/`text_muted`; siffran är räknad ur paletten, inte mätt i en bild |
-| 16 | G1 | **Textskalan är åtta storlekar i praktiken** (11,0 / 13,5 / 20,0 / 9,0 utöver 10,5 / 12,5 / 18) | 🟡 | **Kvittat** | en skala i `theme.rs`, anropen utanför den ska bort |
-| 17 | G4 | **AUTO-TUNE-ratten styr både `strength` och `speed`** (`transport.rs:2175`) | 🟡 | **Kvittat** | två rattar eller en årlig ledtråd — ett beslut |
-| 18 | G4 | **Ctrl+R / Ctrl+T står i ledtrådarna men är inte bundna** (`frame.rs:1732/1735`) | 🟡 | **Kvittat** | en etikett som gissar; bind dem eller stryk texten |
-| 19 | G3 | **Kanalnamn trunkeras utan ledtråd** (`channel_rack.rs:116-121`) | 🟡 | **Kvittat** | hover med hela namnet |
-| 20 | G3 | **`set_width(380/340)` utan scroll** (`channel_rack.rs:1327/1402`) | 🟡 | **Kvittat** | klipper vid 780 px; ska mätas med `clip_rect` |
+| 1 | G4 | **Masterns PAN** — `master_pan` skrevs till projektfilen och lästes av ingen ljudkod | 🔴 | **Åtgärdad** | `SetMasterPanWidth` → `finish_master`; prov: equal-power, energin 2,0 i varje läge |
+| 2 | G4 | **Masterns BREDD** — fält, startvärde och ratt, ingen läsare, sparades inte ens | 🔴 | **Åtgärdad** | mid/sid i `finish_master`; prov: 0 → mono, 1 → orörd, 2 → dubbel sida |
+| 3 | G4 | **Drivepedalens TON** — `stompbox_tone` hade ingen läsare | 🟡 | **Åtgärdad** | enpolsfilter efter mättningen, i DRIVE-grenen; prov: 8 kHz tappar ≥10 dB mot öppet filter |
+| 4 | G4 | **"4x12 Cab"** — kryssrutan skrev ett fält ingen läste | 🟡 | **Borttagen** | fältet är borta ur `SonixApp`; bygget varnar inte längre |
+| 5 | G3 | **Spårnamnet ritas utan mått** (`arranger.rs`) | 🟡 *(nedgraderat)* | **Åtgärdad** | **Granskaren sa att namnet rann över M/S/R — det gör det inte:** knapparna ligger på rad 2 (y+34) och namnet på rad 1 (y+20). Det verkliga felet var att inget mått fanns, så ett långt namn kunde rita ut i tidslinjen. Nu mäts texten mot namnfältet |
+| 6 | G2 | **Tempot gick inte att skriva** — bara ▲/▼ i 1-steg | 🔴 | **Åtgärdad** | `DragValue` 40–240 med decimal: drag, klick-och-skriv, en decimal |
+| 7 | G2 | **Tempot gick inte att ångra** — `bpm` saknades i `TimelineUndoSnapshot` | 🔴 | **Åtgärdad** | `bpm` + `tempo_points` i snapshotet; ångring tas när redigeringen börjar (ett drag = ett steg) |
+| 8 | G3 | **Minsta fönstret gav ingen tidslinje** — 780 − 200 − 320 − 228 | 🔴 | **Åtgärdad** | minsta fönster **1024 × 600** och dockens `min_width` 320 → 280: 276 px tidslinje i värsta fallet |
+| 9 | G2 | **Tre navigationslistor** gick isär (Tab i annan ordning än flikraden) | 🟡 | **Åtgärdad** | `VIEW_ORDER` borta, `VIEWS` är enda listan med etiketter, `ViewMode::ALL` har samma ordning; två prov vaktar (`the_tab_row_and_the_tab_key_walk_the_same_order`, `every_surface_has_exactly_one_tab`) |
+| 10 | G4 | **Flik och panel hade olika namn** ("Stems" mot "Stämmor", "Trummor" mot "Session") | 🟡 | **Delvis** | ordningen och listan är nu en; de **korta** flik-etiketterna är kvar med flit (raden är 14 flikar bred), men panelrubriken vinner inte längre över fliken i ordning. Ett namn per yta är kvar som beslut |
+| 11 | G1 | **Fem fyllnadsfärger i verktygsraden** | 🟡 | **Öppen** | kräver en designregel (≤2 fyllningar per rad). Att välja vilka två är smak, inte mätning |
+| 12 | G3 | **`interact_size.y = 21`** — knappar under 24 px | 🟡 | **Öppen** | en rad att höja, men den flyttar lay-outen på alla 14 ytor; ska mätas med fångst före/efter |
+| 13 | G5 | **Sifferformat** — `format!("{:.1}", bpm)` ger "124.0" i alla sju språk | 🟡 | **Öppen** | kräver **en** språkmedveten formatterare och en svepning; att fixa fem ställen lämnar appen halvöversatt |
+| 14 | G5 | **Exportraden gick aldrig genom `t()`** | 🟡 | **Åtgärdad** | `💾 EXPORT SONG` / `💾 EXPORT PAT` i alla sex tabeller; auditen rapporterar 0 nycklar utan tabell (1 888 nycklar i `t()`) |
+| 15 | G5 | **Ljust tema under AA för accenter** | 🟡 | **Åtgärdad** | **reproducerat:** orange 3,72:1, amber 3,68:1, gul 4,45:1 mot panel_alt. Nya värden ger ≥4,5; mörkt läge hade också röd 4,27 och lila 4,49 → rättade. Provet `light_mode_keeps_the_accents_readable_as_text` vaktar |
+| 16 | G1 | **Textskalan var åtta storlekar i praktiken** | 🟡 | **Åtgärdad** | 11,0 / 13,5 / 20,0 / 9,0 flyttade till `Theme::FONT_XS/S/L`; kvar utanför skalan: inga |
+| 17 | G4 | **AUTO-TUNE-ratten styr både `strength` och `speed`** | 🟡 | **Åtgärdad** | två rattar (HASTIGHET, STYRKA) och två fält i `VocalHarmonizer`; live-vägen tar dem separat |
+| 18 | G4 | **Ctrl+R / Ctrl+T stod i ledtrådarna men var inte bundna** | 🟡 | **Åtgärdad** | bundna i kommandoblocket; ledtrådarna är nu sanna |
+| 19 | G3 | **Kanalnamnet trunkerades utan ledtråd** | 🟡 | **Åtgärdad** | hover på namnfältet visar hela namnet |
+| 20 | G3 | **`set_width(380/340)` utan scroll** — klippte vid 780 px | 🟡 | **Löst av #8** | vid nya minsta bredd (1024) ryms 380 + 340; ingen egen layoutändring behövdes |
 
-**Sammanfattning:** 20 fynd prövade, **4 åtgärdade** (alla fyra är kontroller som ljög — den familj
-repot redan har en regel om), **16 kvittade och köade** i den ordning tabellen står. Noll fynd
-underkändes: varje rad granskaren skrev gick att hitta i koden.
+**Sammanfattning:** 20 fynd prövade. **14 helt åtgärdade**, **1 nedgraderat och åtgärdat** (#5),
+**1 löst av ett annat** (#20), **1 delvis** (#10), **3 öppna** (#11 fyllnadsfärger, #12
+`interact_size`, #13 sifferformat) — alla tre för att de är beslut eller svepningar, inte buggfixar.
 
-**Vad rundan inte kunde döma:** tolv av de 39 dialogerna i maskinbeskrivningen (kvotstopp — ytan finns i
-fångsten, textbeskrivningen saknas), färg och kontrast i pixlarna (mörkt tema fångades, ljust inte),
-fönstret vid 780×540 (fångsten tvingar fullskärm), och svarstider (llvmpipe). De tre står kvar som
-mätpunkter, inte som slutsatser.
+**Nytt fynd som rundan inte hade:** spårfärgerna används som **text** (spårnamnet i huvudet) och
+ligger i mörkt läge på **3,2–4,5:1** — `track_magenta` 3,23, `track_rose` 3,24, `track_violet` 3,56,
+`track_cyan` 3,94. Antingen ljusas elva färger upp (ändrar hela arrangörens utseende) eller så ritas
+namnet i `text`-färgen och identiteten bärs av ikon och accentrad. **Inte gjort** — det är design.
 
----
+**Vad rundan inte kunde döma:** tolv av de 39 dialogerna i maskinbeskrivningen (kvotstopp — ytan finns
+i fångsten, textbeskrivningen saknas), färg och kontrast i pixlarna (mörkt tema fångades, ljust inte),
+fönstret vid minsta storlek (fångsten tvingar fullskärm) och svarstider (llvmpipe).
+
+**Sviten efter åtgärderna:** 1 378 prov, 0 röda, 20 ignorerade. Fångsten går att köra om:
+`env -u WAYLAND_DISPLAY WINIT_UNIX_BACKEND=x11 xvfb-run -a -s "-screen 0 1920x1200x24" ./target/release/sonix --capture-screenshots <mapp>`
+— **utan** de två variablerna tar winit Waylandsätet och öppnar fönstret på skrivbordet i stället.
 
 ## 4. Alex' eget ingripande under rundan (2 nov)
 
