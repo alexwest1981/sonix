@@ -418,34 +418,46 @@ impl SynthEngine {
         // 6b. Plug-in delay compensation: find the largest insert latency so
         //     every bus can be aligned to it (Fas 4.2). Only relevant while the
         //     song is playing, so live monitoring keeps its low latency.
-        let max_plugin_latency = if self.song_playing {
-            self.stem_tracks
-                .iter()
-                .map(|t| {
-                    let plugin = t
-                        .plugin
-                        .as_ref()
-                        .map(|p| p.latency_frames())
-                        .unwrap_or(0);
-                    let pitch = if t.pitch_active {
-                        t.pitch_shifter.latency_frames()
-                    } else {
-                        0
-                    };
-                    // Det manuella offsetet hör hit också (Fas 8.6): ett spår med offset ska
-                    // dra med sig de andra, annars vore det ingen kompensation.
-                    crate::audio::plugin_host_live::compensated_latency(
-                        plugin,
-                        pitch,
-                        t.manual_latency_frames,
-                    )
-                })
-                .max()
-                .unwrap_or(0)
+        //
+        //     Maximumet räknades förut om varje sample (~1 M anrop/s). Latensen
+        //     ändras bara när en plugin, pitch eller ett manuellt offset ändras,
+        //     så det räcker var 64:e sample: 1,3 ms vid 48 kHz, kortare än något
+        //     latensbyte hörs som fel.
+        if self.pdc_countdown == 0 {
+            self.pdc_countdown = 63;
+            let max_plugin_latency = if self.song_playing {
+                self.stem_tracks
+                    .iter()
+                    .map(|t| {
+                        let plugin = t
+                            .plugin
+                            .as_ref()
+                            .map(|p| p.latency_frames())
+                            .unwrap_or(0);
+                        let pitch = if t.pitch_active {
+                            t.pitch_shifter.latency_frames()
+                        } else {
+                            0
+                        };
+                        // Det manuella offsetet hör hit också (Fas 8.6): ett spår med offset ska
+                        // dra med sig de andra, annars vore det ingen kompensation.
+                        crate::audio::plugin_host_live::compensated_latency(
+                            plugin,
+                            pitch,
+                            t.manual_latency_frames,
+                        )
+                    })
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            self.pdc_max_latency = max_plugin_latency;
+            self.pdc_bus.set_delay(max_plugin_latency);
         } else {
-            0
-        };
-        self.pdc_bus.set_delay(max_plugin_latency);
+            self.pdc_countdown -= 1;
+        }
+        let max_plugin_latency = self.pdc_max_latency;
         let (del_l, del_r) = self.pdc_bus.process(del_l, del_r);
 
         // 7. Multi-Track Stem Audio Streaming (with Region Slicing & Fades)
@@ -474,6 +486,14 @@ impl SynthEngine {
                 || bus_solo.iter().any(|&s| s)
                 || vca_solo.iter().any(|&s| s);
             let current_time_sec = self.song_time_samples as f32 / self.sample_rate;
+            // Bakåt i tiden (seek eller loop): regionkursorn får bara flyttas framåt,
+            // så alla spår måste börja om från första regionen.
+            if current_time_sec < self.region_cursor_time {
+                for t in &mut self.stem_tracks {
+                    t.region_cursor = 0;
+                }
+            }
+            self.region_cursor_time = current_time_sec;
             // Sidokedjor (Fas 8.3): nyckelsignalerna är varje spårs senaste
             // utgångssample. De kopieras hit av samma skäl som gruppläget ovan —
             // loopen lånar `stem_tracks` mutabelt och kan inte läsa ett annat spår.
@@ -565,8 +585,24 @@ impl SynthEngine {
                 }
 
                 if !track.regions.is_empty() {
+                    // Kursorn: regioner som redan slutat hoppas över en gång för alla.
+                    // Listan sorteras på starttid när den sätts, så kursorn behöver
+                    // bara flyttas framåt — förut skannades varje klipp varje sample.
+                    let t = current_time_sec;
+                    let mut cursor = track.region_cursor.min(track.regions.len());
+                    while cursor < track.regions.len()
+                        && track.regions[cursor].start_time_secs
+                            + track.regions[cursor].length_secs
+                            <= t
+                    {
+                        cursor += 1;
+                    }
+                    track.region_cursor = cursor;
                     // Play defined audio regions/slices
-                    for region in &track.regions {
+                    for region in &track.regions[cursor..] {
+                        if region.start_time_secs > t {
+                            break;
+                        }
                         if region.muted {
                             continue;
                         }

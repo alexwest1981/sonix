@@ -149,7 +149,7 @@ fn build_input_stream(
 ) -> Result<Stream, cpal::BuildStreamError> {
     let num_channels = config.channels as usize;
     macro_rules! callback_body {
-        ($data:expr, $convert:expr, $autotune:expr, $low_cut:expr, $notch:expr) => {{
+        ($data:expr, $convert:expr, $autotune:expr, $low_cut:expr, $notch:expr, $scratch:expr) => {{
             let gain = *shared.input_gain.lock().unwrap_or_else(|e| e.into_inner());
             let gate = *shared.noise_gate_thresh.lock().unwrap_or_else(|e| e.into_inner());
             let strength = *shared.autotune_strength.lock().unwrap_or_else(|e| e.into_inner());
@@ -188,6 +188,7 @@ fn build_input_stream(
                 notch_hz,
                 monitor_on,
                 &shared.monitor_ring,
+                $scratch,
                 $convert,
             );
             shared.peak_vu.store(block_max.to_bits(), Ordering::Relaxed);
@@ -199,10 +200,11 @@ fn build_input_stream(
             let mut autotune = RealtimeAutotune::new(sample_rate as f32);
             let mut low_cut = HighPassFilter::new(sample_rate as f32, LOW_CUT_CUTOFF_HZ);
             let mut notch = NotchFilter::new(sample_rate as f32);
+            let mut monitor_scratch: Vec<f32> = Vec::new();
             device.build_input_stream(
                 config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    callback_body!(data, |s| s, &mut autotune, &mut low_cut, &mut notch);
+                    callback_body!(data, |s| s, &mut autotune, &mut low_cut, &mut notch, &mut monitor_scratch);
                 },
                 |err| eprintln!("[Sonix Mic Input Error] {}", err),
                 None,
@@ -212,6 +214,7 @@ fn build_input_stream(
             let mut autotune = RealtimeAutotune::new(sample_rate as f32);
             let mut low_cut = HighPassFilter::new(sample_rate as f32, LOW_CUT_CUTOFF_HZ);
             let mut notch = NotchFilter::new(sample_rate as f32);
+            let mut monitor_scratch: Vec<f32> = Vec::new();
             device.build_input_stream(
                 config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
@@ -220,7 +223,8 @@ fn build_input_stream(
                         |s| s as f32 / 32768.0,
                         &mut autotune,
                         &mut low_cut,
-                        &mut notch
+                        &mut notch,
+                        &mut monitor_scratch
                     );
                 },
                 |err| eprintln!("[Sonix Mic Input Error] {}", err),
@@ -510,6 +514,11 @@ fn process_mic_block<T: Copy>(
     notch_hz: Option<f32>,
     monitor_enabled: bool,
     monitor_ring: &Arc<Mutex<Vec<f32>>>,
+    // Återanvänd per block. Samples samlas här och läggs i `monitor_ring` under ett
+    // **kort** lås i slutet, i stället för att hålla låset över hela blocket:
+    // uttråden tar samma lås, och en preemptad ingångstråd fick förut den att vänta
+    // upp till en hel buffert (priority inversion → tappad buffer).
+    monitor_scratch: &mut Vec<f32>,
     convert: impl Fn(T) -> f32,
 ) -> f32 {
     let ch = channels.max(1);
@@ -526,11 +535,7 @@ fn process_mic_block<T: Copy>(
         None
     };
     let mut an = analysis.lock().unwrap_or_else(|e| e.into_inner());
-    let mut monitor = if monitor_enabled {
-        Some(monitor_ring.lock().unwrap_or_else(|e| e.into_inner()))
-    } else {
-        None
-    };
+    monitor_scratch.clear();
 
     for frame in data.chunks(ch) {
         let mut mono = (frame.iter().map(|&s| convert(s)).sum::<f32>() / ch as f32) * gain;
@@ -567,8 +572,8 @@ fn process_mic_block<T: Copy>(
                 }
         }
         an.push(mono.clamp(-1.0, 1.0));
-        if let Some(m) = monitor.as_mut() {
-            m.push(autotune.process(mono).clamp(-1.0, 1.0));
+        if monitor_enabled {
+            monitor_scratch.push(autotune.process(mono).clamp(-1.0, 1.0));
         }
     }
 
@@ -576,11 +581,17 @@ fn process_mic_block<T: Copy>(
         let drop = an.len() - ANALYSIS_MAX;
         an.drain(0..drop);
     }
-    if let Some(m) = monitor.as_mut()
-        && m.len() > 16384 {
+    // Kort lås: en memcpy, inte en hel bufferts arbete.
+    if monitor_enabled
+        && !monitor_scratch.is_empty()
+        && let Ok(mut m) = monitor_ring.lock()
+    {
+        m.extend_from_slice(monitor_scratch);
+        if m.len() > 16384 {
             let drop = m.len() - 16384;
             m.drain(0..drop);
         }
+    }
     block_max
 }
 
@@ -1145,7 +1156,16 @@ impl VocalStudioTrack {
         self.live_recording_peaks.clear();
 
         if let Some(ref mic) = self.mic_capture {
-            if let Ok(mut s) = mic.recorded_samples.lock() { s.clear(); }
+            if let Ok(mut s) = mic.recorded_samples.lock() {
+                s.clear();
+                // Tagningar över 30 s reallokerade (och kopierade) inne i
+                // ljudcallbacken. Reservera fem minuter här i stället; sidorna
+                // tas i anspråk först när de skrivs.
+                let reserve = mic.sample_rate as usize * 300;
+                if s.capacity() < reserve {
+                    s.reserve(reserve);
+                }
+            }
             if let Ok(mut p) = mic.live_peaks.lock() { p.clear(); }
             mic.is_recording.store(true, Ordering::Relaxed);
             mic.is_paused.store(false, Ordering::Relaxed);
@@ -1173,7 +1193,15 @@ impl VocalStudioTrack {
             return Err(crate::i18n::t("Ingen mikrofon är tillgänglig för inspelning").to_string());
         }
         if let Some(ref mic) = self.mic_capture {
-            if let Ok(mut s) = mic.recorded_samples.lock() { s.clear(); }
+            if let Ok(mut s) = mic.recorded_samples.lock() {
+                s.clear();
+                // Samma reservering som `start_recording`: ingen reallokering i
+                // callbacken under de fem första minuterna.
+                let reserve = mic.sample_rate as usize * 300;
+                if s.capacity() < reserve {
+                    s.reserve(reserve);
+                }
+            }
             if let Ok(mut p) = mic.live_peaks.lock() { p.clear(); }
             mic.is_recording.store(true, Ordering::Relaxed);
             mic.is_paused.store(false, Ordering::Relaxed);

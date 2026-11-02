@@ -557,6 +557,15 @@ pub struct SynthEngine {
     pub patcher_enabled: bool,
     /// PDC delay line for the synth/drum/sample bus (Fas 4.2).
     pub pdc_bus: PdcDelay,
+    /// Räknare för PDC-maximumet: det räknas om var 64:e sample i stället för
+    /// varje. Latensen ändras bara på kommando, och 64 samples ≈ 1,3 ms.
+    pub pdc_countdown: u8,
+    /// Tidpunkten förra samplet hade. Går tiden bakåt (seek, loop) nollas
+    /// regionkursorna, eftersom de bara flyttas framåt.
+    pub region_cursor_time: f32,
+    /// Senast uträknade PDC-maximum. Räknas om var 64:e sample men behövs för
+    /// varje spårs egen fördröjning, därav fältet.
+    pub pdc_max_latency: usize,
     /// Sub-mix bus group gains / mute / solo (Fas 5.2).
     pub bus_volume: [f32; NUM_BUSES],
     pub bus_muted: [bool; NUM_BUSES],
@@ -690,6 +699,9 @@ impl SynthEngine {
             patcher_spec: None,
             patcher_enabled: false,
             pdc_bus: PdcDelay::new(),
+            pdc_countdown: 0,
+            region_cursor_time: 0.0,
+            pdc_max_latency: 0,
             bus_volume: [1.0; NUM_BUSES],
             bus_muted: [false; NUM_BUSES],
             bus_solo: [false; NUM_BUSES],

@@ -176,17 +176,25 @@ Inte prioriterat: skanningen är bakgrundsarbete och cachen träffar normalt.
 | Post | Utförd | Bevis |
 |---|---|---|
 | Release-vägen (`--no-default-features`) | ✅ | `cargo check` grön för alla fyra feature-kombinationer; releasebygge kört |
-| Vågformsklippning mot vyn | ✅ | kompilerar, 1 368 prov gröna; kantfall kvar för ögat |
+| Vågformsklippning mot vyn | ✅ | kompilerar, 1 369 prov gröna; kantfall kvar för ögat |
 | `mixer.rs` delad i fyra filer | ✅ | 4 656 → 998 + 1 563 + 1 095 + 1 018 rader |
-| Regionskanning med cursor | ⏳ | kräver invalidering; eget pass |
-| PDC-cache | ⏳ | kräver dirty-flagga i alla latenskommandon |
-| `regions.clone()` bort | ⏳ | kräver att fyra mutationer flyttas |
-| CI: jack/python + nattliga ignore-prov | ⏳ | två steg i `ci.yml` |
-| `modals.rs`, `arranger.rs`-delning | ⏳ | nästa strukturella pass |
+| Mickingångens lås över hela blocket | ✅ | samlas i scratch, läggs in under ett memcpy-långt lås |
+| Tagning >28 s reallokerade i callbacken | ✅ | fem minuter reserveras på UI-tråden vid start |
+| Regionskanning med cursor | ✅ | sorterad lista + cursor; seek bakåt nollställer; nytt prov |
+| PDC-cache | ✅ | räknas om var 64:e sample, tvingas direkt av varje kommando |
+| `piano_roll` regelverk → `rules.rs` | ✅ | 193 rader ut; proven körs kvar i `piano_roll` (1 369 gröna) |
+| `modals.rs` delad i fem filer | ✅ | 4 484 → 1 088 + 763 + 500 + 1 046 + 500 + 622 rader, 39/39 funktioner |
+| CI: jack/python | ✅ | nytt `feature-checks`-jobb med `-D warnings` |
+| CI: nattliga ignore-prov | ⛔ | de 20 är mätningar mot filer på disk; ett CI-jobb skulle falla varje natt |
+| `regions.clone()` bort | ⏳ | kräver att fyra mutationer flyttas ut ur loopen |
+| `arranger.rs`-delning (`draw_timeline_lanes` 2 120 rader) | ⏳ | nästa strukturella pass |
 
-Prov efter åtgärderna: **1 368 gröna, 0 röda, 20 ignorerade** (19,7 s) i basbenet och **1 437 gröna**
-i plugin-host-benet. `cargo check --no-default-features` 0 varningar, `cargo build --release --locked
---no-default-features` 1 m 20 s.
+Prov efter åtgärderna: **1 369 gröna, 0 röda, 20 ignorerade** (19,4 s) i basbenet — ett nytt prov för
+regionkursorns seek — och **1 437 gröna** i plugin-host-benet. `cargo check --no-default-features`
+0 varningar, `cargo build --release --locked --no-default-features` 1 m 41 s. Realtidsmätningen
+(`audio::realtime_bench`, 8 kanaler + 3 spår): värsta block **0,07 ms vid 64 frames** mot 1,45 ms
+budget (5,2 %), 0,26 ms vid 512 frames (2,2 %). Den mäter inte 100-klipps-fallet; cursorfixen vilar på
+funktionsproven, inte på den siffran.
 
 **CI efter rundan:** alla fem jobb gröna (körning `41496326702`), inklusive `--no-default-features`,
 Windows-bygget, neural-benet, release-paketen och rökproven på debian:12, ubuntu:22.04/24.04,

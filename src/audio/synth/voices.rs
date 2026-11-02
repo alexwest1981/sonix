@@ -182,6 +182,10 @@ pub struct StemVoiceTrack {
     pub solo: bool,
     pub start_time_secs: f32,
     pub regions: Vec<StemRegionPlayback>,
+    /// Första region som kan vara aktiv. Regionlistan sorteras på starttid när den
+    /// sätts, så kursorn behöver bara flyttas framåt — utan den skannades alla
+    /// klipp varje sample (O(spår × klipp)). Nollas vid seek bakåt.
+    pub region_cursor: usize,
     pub eq: TrackEqSettings,
     pub eq_proc: StereoEq,
     pub comp: Compressor,
@@ -967,6 +971,7 @@ impl StemVoiceTrack {
             solo: false,
             start_time_secs,
             regions: Vec::new(),
+            region_cursor: 0,
             eq: TrackEqSettings::default(),
             eq_proc: StereoEq::new(engine_sample_rate),
             comp: Compressor::new(engine_sample_rate),

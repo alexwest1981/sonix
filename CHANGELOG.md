@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.237] - 2026-11-02
+
+### Fixed
+- **Mickingången höll monitor-låset över hela blocket**, medan uttråden tar samma lås. En preemptad
+  ingångstråd kunde få ljudutgången att vänta upp till en buffert (priority inversion → tappad buffer).
+  Samples samlas nu i en återanvänd scratch och läggs in under ett memcpy-långt lås.
+- **Tagningar över ~28 s reallokerade inne i ljudcallbacken** (5,8 MB memcpy vid 48 kHz). Fem minuter
+  reserveras nu på UI-tråden när inspelningen startar.
+
+### Changed
+- **Regionskanningen i ljudtråden har en cursor.** Regionlistan sorteras på starttid när den sätts, och
+  `process_stereo` börjar vid första region som kan vara aktiv i stället för att skanna alla klipp varje
+  sample. Seek bakåt nollställer kursorn; ett nytt prov spelar förbi en region, seekar tillbaka och hör
+  den igen.
+- **PDC-maximumet räknas om var 64:e sample** i stället för varje (~1 M anrop/s). Varje kommando tvingar
+  en omedelbar omräkning, så ett pluginbyte kompenseras på nästa sample.
+- `piano_roll.rs` regelverk (fält, jämförelser, åtgärder) → `ui/app/rules.rs`.
+- `modals.rs` (4 484 rader, 34 dialoger) → `modal_panels`, `modal_project`, `modal_stems`,
+  `modal_settings`, `modal_creative`. Kvar i `modals.rs`: hjälpen och utskickaren.
+- CI bygger nu även `--features jack` och `--features python` (`-D warnings`). De 20 `#[ignore]`-proven
+  körs fortfarande bara för hand: de mäter mot filer på disk och skulle falla i CI.
+
+Se `docs/EGM-SONIX-ROUND2.md`.
+
 ## [0.9.236] - 2026-11-02
 
 ### Fixed

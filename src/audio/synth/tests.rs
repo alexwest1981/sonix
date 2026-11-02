@@ -4324,3 +4324,55 @@ fn process_stereo_allocates_nothing() {
     );
     assert!(worst_ms > 0.0, "the measurement must have measured something");
 }
+
+/// **Regionkursorn får bara gå framåt.** När en region spelats förbi flyttas
+/// kursorn till nästa; en seek bakåt måste nolla den, annars blir regionen tyst
+/// för resten av sessionen. Testet mäter slutet av den första spelningen (tyst),
+/// seekar tillbaka och mäter att regionen hörs igen.
+#[test]
+fn seeking_back_replays_a_region_the_cursor_passed() {
+    let sr = 48_000u32;
+    let source = vec![0.25f32; sr as usize];
+    let left = Arc::new(source.clone());
+    let right = Arc::new(source);
+
+    let mut synth = SynthEngine::new(sr as f32);
+    synth.handle_command(AudioCommand::LoadStemTrack {
+        track_index: 0,
+        left,
+        right,
+        sample_rate: sr as f32,
+        volume: 1.0,
+        pan: 0.0,
+        start_time_secs: 0.0,
+    });
+    synth.handle_command(AudioCommand::SetStemTrackRegions {
+        track_index: 0,
+        regions: vec![region_under_test(0.1, 0.0, 0.0, false, 1.0)],
+    });
+    synth.handle_command(AudioCommand::SetSongPlayback(true));
+
+    // 1 s: regionen (0,1 s) hörs först, sedan är det tyst nog att mäta.
+    let mut heard = 0.0f32;
+    let mut tail = 0.0f32;
+    for i in 0..sr as usize {
+        let (l, _r) = synth.process_stereo();
+        if i < 2_000 {
+            heard = heard.max(l.abs());
+        }
+        if i > sr as usize - 2_000 {
+            tail = tail.max(l.abs());
+        }
+    }
+    assert!(heard > 0.1, "regionen ska höras i början: topp {heard}");
+    assert!(tail < 0.05, "efter regionens slut ska det vara tyst: topp {tail}");
+    assert_eq!(synth.stem_tracks[0].region_cursor, 1, "kursorn ska ha passerat regionen");
+
+    synth.handle_command(AudioCommand::SeekSongPosition(0.0));
+    let mut again = 0.0f32;
+    for _ in 0..(sr as usize / 20) {
+        let (l, _r) = synth.process_stereo();
+        again = again.max(l.abs());
+    }
+    assert!(again > 0.1, "efter seek bakåt ska regionen höras igen: topp {again}");
+}

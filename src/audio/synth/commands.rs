@@ -38,6 +38,10 @@ impl SynthEngine {
     }
 
     pub fn handle_command(&mut self, cmd: AudioCommand) {
+        // Ett kommando kan ändra plugin-, pitch- eller manuell latens. Räknaren
+        // tvingar PDC-maximumet att räknas om på nästa sample i stället för att
+        // vänta upp till 64 — annars ligger kompensationen efter ett pluginbyte.
+        self.pdc_countdown = 0;
         let significant = matches!(
             &cmd,
 
@@ -666,6 +670,12 @@ impl SynthEngine {
             AudioCommand::SetStemTrackRegions { track_index, regions } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
                     track.regions = regions;
+                    // Sorterad på starttid: regionkursorn i `process_stereo` får
+                    // bara flyttas framåt, och då måste listan vara i ordning.
+                    track
+                        .regions
+                        .sort_by(|a, b| a.start_time_secs.total_cmp(&b.start_time_secs));
+                    track.region_cursor = 0;
                 }
                 self.recount_stretched_tracks();
             }

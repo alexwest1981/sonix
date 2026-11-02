@@ -91,6 +91,7 @@ mod midi;
 mod compare;
 
 mod piano_roll;
+mod rules;
 
 mod browser;
 pub(crate) use browser::*;
@@ -100,6 +101,11 @@ mod launcher;
 mod macros;
 
 mod modals;
+mod modal_creative;
+mod modal_panels;
+mod modal_project;
+mod modal_settings;
+mod modal_stems;
 
 mod arranger;
 

@@ -127,6 +127,35 @@ jobs:
             cargo test --release --locked --no-default-features audio::realtime_bench -- --nocapture
           fi
 
+  # **De två feature-ben som ingen byggde.** `jack` och `python` fanns bara i
+  # Cargo.toml: noll träffar i workflows, så cfg-fel i dem kunde bara hittas av
+  # den som råkade bygga dem lokalt. Samma noll-varning-krav som övriga jobb,
+  # uttryckt som `-D warnings` i stället för ett logggrepp.
+  feature-checks:
+    name: Feature builds (jack, python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        timeout-minutes: 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libasound2-dev libjack-jackd2-dev python3-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo check --features jack
+        run: RUSTFLAGS="-D warnings" cargo check --locked --no-default-features --features jack
+
+      - name: cargo check --features python
+        run: RUSTFLAGS="-D warnings" cargo check --locked --no-default-features --features python
+
   neural:
     name: Build & test (neural)
     runs-on: ubuntu-latest
