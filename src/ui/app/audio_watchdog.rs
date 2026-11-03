@@ -35,6 +35,18 @@ impl SonixApp {
         // Kapas som autosparandet: en återupptagen bildruta efter en paus ska inte
         // räknas som en sekund av tystnad.
         let dt = ctx.input(|i| i.stable_dt).min(0.5);
+        // **Ingen omstart medan fönstret inte syns** (Alex 2026-11-03: "not responding" så fort
+        // han bytte arbetsyta). En omstart öppnar ljudenheten, och det är den enda här som kan
+        // blockera bildrutan i sekunder — på en enhet som svarar POLLERR kan den ta längre tid
+        // än window-managerns tålamod. Med fönstret borta finns inget att lyssna på, så räknaren
+        // står still: omstarten sker först när appen syns och svarar igen.
+        let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        if !focused {
+            self.audio_frozen_secs = 0.0;
+            self.audio_recovered_secs = 0.0;
+            self.audio_rebuild_cooldown = (self.audio_rebuild_cooldown - dt).max(0.0);
+            return;
+        }
         let heartbeat = self.engine.heartbeat();
         if heartbeat != self.audio_heartbeat_seen {
             self.audio_heartbeat_seen = heartbeat;

@@ -137,3 +137,29 @@ och de behöver vara lite smalare, inte så höga."** Byggt samma kväll:
 | Styra den | **Ctrl+hjul över spårhuvudet** zoomar bara den raden, plus tre steg i spårets högerklicksmeny (smal/normal/hög) | ingen körning — den vägen är klickad för hand, inte mätt |
 | Följer med filen | `SavedTrackData::row_scale` med `#[serde(default)]` | `an_old_file_gets_a_normal_row_and_a_new_one_keeps_its_zoom` |
 | Lanes och block | radhöjden gäller spårhuvud, lane, patternblock och tagningarnas band — inte masterns rad | **1 371 prov gröna**; fyra video-prov föll under last (ffmpeg-timeout, 5 s) och var gröna i isolering |
+
+---
+
+## 5. "Not responding" vid arbetsytebyte (Alex 2026-11-03)
+
+**Symtom:** fönstret blir "not responding" så fort Alex byter arbetsyta.
+
+**Vad som är mätt:** `frame_spikes.log` visar hängningen **inte** — den skriver bara när en
+bildruta *blir klar*, och en blockerad bildruta blir aldrig klar. Loggen kunde därför varken visa
+eller utesluta något, vilket är värre än inget.
+
+**Vad som är gjort:**
+
+1. **Vakthunden rör inte strömmen medan fönstret är dolt.** En `reconfigure()` öppnar ljudenheten på
+   UI-tråden, och det är den enda operationen i appen som kan ta sekunder utan att någon bildruta
+   skrivs — på en enhet som svarar `alsa::poll() → POLLERR` (303 kB i `audio_crash.log` sedan 27 okt)
+   är det dessutom sannolikt. Med fönstret borta finns inget att lyssna på.
+2. **Hängproben**: en tråd som tittar var 200:e ms och skriver
+   `HÄNG: ingen bildruta på X s · senast klar: '<fas>' · blockeringen sitter i …`. Är den senast
+   klara fasen `skarmdump` har hela `update` gått igenom och då sitter blockeringen i fönstrets
+   present — alltså utanför appens kod.
+
+**Vad som inte är bevisat:** att (1) är orsaken. Det är den mest sannolika kandidaten som går att
+åtgärda i appen, inte en mätt orsak. Nästa hängning avgör: en `HÄNG`-rad med `'skarmdump'` pekar på
+winit/Wayland, en rad med en annan fas pekar på appens egen kod, och **ingen rad alls** betyder att
+UI-tråden aldrig blockerades utan att det är compositorns eget beslut.

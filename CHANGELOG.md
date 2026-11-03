@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **"Not responding" när fönstret byter arbetsyta.** Ljudvakthunden byggde om strömmen medan
+  fönstret var dolt; en omstart öppnar ljudenheten, och på en enhet som svarar POLLERR kan det ta
+  längre tid än window-managerns tålamod. Nu står räknaren still medan fönstret inte syns, så en
+  omstart sker först när appen syns och svarar.
+
+### Added
+- **Hängproben** (`perf_probe.rs`): en tråd vid sidan om skriver en rad i `frame_spikes.log` när
+  ingen bildruta gått vidare på två sekunder, med **senast klara fas** — så nästa hängning pekar
+  ut var den satt (fasen efter den, eller fönstrets present om allt utom presenten hann klart).
+  Fasmätarens rader har nu också tidsstämpel, så ett glapp syns som ett glapp.
+
+### Fixed
 - **Tempot går att skriva och går att ångra.** BPM stod som en etikett med ▲/▼ i ett steg, så
   124 → 140 var sexton klick och ett decimaltempo gick inte alls; och `bpm` saknades i
   `TimelineUndoSnapshot`, så Ctrl+Z lämnade både tempot och de omsträckta klippen. Nu ett
