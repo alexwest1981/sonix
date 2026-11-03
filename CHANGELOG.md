@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   omstart sker först när appen syns och svarar.
 
 ### Added
+- **`sonix-mcp` — MCP-server så en AI kan styra appen.** En separat binär som talar MCP över stdio
+  och skickar vidare till appens befintliga AI-yta (`/v1/tools`, `/v1/execute`, `/v1/last` på
+  loopback med bearer-token). Inga nya verktyg, ingen ny validering, ingen ny state: de **15**
+  verktygen går genom samma validering och samma enda ångringssteg som den inbyggda assistenten.
+  Fungerar med varje klient som kan starta ett kommando. Mätt hela vägen mot den körande appen:
+  `initialize` → `serverInfo sonix`, `tools/list` → 15 verktyg, `tools/call set_tempo {bpm:128}`
+  → kvittot "tempo 128 BPM".
 - **Hängproben** (`perf_probe.rs`): en tråd vid sidan om skriver en rad i `frame_spikes.log` när
   ingen bildruta gått vidare på två sekunder, med **senast klara fas** — så nästa hängning pekar
   ut var den satt (fasen efter den, eller fönstrets present om allt utom presenten hann klart).
