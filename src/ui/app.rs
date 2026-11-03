@@ -214,6 +214,8 @@ pub struct SonixApp {
     pub audio_rebuild_cooldown: f32,
     /// Dödsfall i rad sedan en ström senast överlevde — trappan i `rebuild_step` läser den.
     pub audio_rebuild_failures: u32,
+    /// Sagt "ljudet kan inte hållas igång" en gång — inte varje gång trappan tar slut.
+    pub audio_gave_up: bool,
     /// Hur länge den nuvarande strömmen har levt (nollställs när hjärtslaget stannar).
     pub audio_recovered_secs: f32,
     /// Fasmätaren: bildrutans delar i millisekunder, töms varje bildruta.
@@ -1114,6 +1116,7 @@ impl SonixApp {
             audio_frozen_secs: 0.0,
             audio_rebuild_cooldown: 0.0,
             audio_rebuild_failures: 0,
+            audio_gave_up: false,
             audio_recovered_secs: 0.0,
             perf_marks: Vec::new(),
             perf_frames: std::collections::VecDeque::new(),
@@ -1611,6 +1614,7 @@ impl eframe::App for SonixApp {
         // bildruta går över budgeten, så en långsam session går att läsa i efterhand.
         let frame_start = std::time::Instant::now();
         self.perf_marks.clear();
+        self.perf_frame_start();
         let mut mark = std::time::Instant::now();
 
         // Temafilen läses om när den ändras — annars krävdes en omstart för att se en färg.

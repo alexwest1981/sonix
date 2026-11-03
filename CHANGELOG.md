@@ -8,16 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **En extern modell kunde skriva vilken fil som helst via `write_script`.** `load_midi`/`save_midi`
+  fanns i Rhai-motorn och AI-vägen grindade dem inte — över MCP skedde det utan en människa vid
+  tangentbordet. Nu registreras de bara för den betrodda skriptrutan (`script::run_isolated` för
+  modellen). Prov: `a_model_script_cannot_touch_the_filesystem`.
+- **Kvittot kunde tillhöra ett annat anrop.** `/v1/last` har ingen korrelations-id, så ett
+  tidsutgånget anrop lämnade sitt kvitto till nästa. Adaptern tömmer den nu före POST, och en
+  tidsutgång rapporteras som `isError: true` i stället för som en tyst framgång.
+- **Radzoomens golv klippte kontrollerna** (44 px ritar M/S/R/F över nästa rad; golvet är 56), och
+  en handredigerad `row_scale` i projektfilen kläms nu till 0,5–2,0 vid inläsning.
+- **Hängproben kunde peka ut fel kod.** `last_done` nollas nu per bildruta (`bildruta-start`), så en
+  hängning före första fasen inte längre påstås sitta i fönstrets present; låset kan inte heller dö
+  tyst.
+- **Ljudvakthunden kunde ge upp utan ett ord.** Beskedet jämförde mot en egen konstant i stället för
+  mot bufferttrappan, så det skrevs aldrig — appen var tyst och statusraden teg. Nu sägs det en gång,
+  där trappan faktiskt tar slut.
 - **"Not responding" när fönstret byter arbetsyta.** Ljudvakthunden byggde om strömmen medan
   fönstret var dolt; en omstart öppnar ljudenheten, och på en enhet som svarar POLLERR kan det ta
-  längre tid än window-managerns tålamod. Nu står räknaren still medan fönstret inte syns, så en
-  omstart sker först när appen syns och svarar.
+  längre tid än window-managerns tålamod. Räknaren står nu still bara när fönstret är i bakgrunden
+  **och** transporten står still — spelar det lyssnar man även med fönstret bakom ett annat, och då
+  måste ljudet räddas.
 
 ### Added
 - **`sonix-mcp` — MCP-server så en AI kan styra appen.** En separat binär som talar MCP över stdio
   och skickar vidare till appens befintliga AI-yta (`/v1/tools`, `/v1/execute`, `/v1/last` på
   loopback med bearer-token). Inga nya verktyg, ingen ny validering, ingen ny state: de **15**
-  verktygen går genom samma validering och samma enda ångringssteg som den inbyggda assistenten.
+  verktygen går genom samma validering som den inbyggda assistenten. **Ångringssteget finns inte
+  än** — `ai_execute_call` rör inte historiken (se `docs/EGM-SONIX-CODE-REVIEW.md`, fynd 2).
   Fungerar med varje klient som kan starta ett kommando. Mätt hela vägen mot den körande appen:
   `initialize` → `serverInfo sonix`, `tools/list` → 15 verktyg, `tools/call set_tempo {bpm:128}`
   → kvittot "tempo 128 BPM".

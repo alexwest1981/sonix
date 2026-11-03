@@ -3425,7 +3425,9 @@ impl SonixApp {
 /// En rads höjd ur spårets egen zoom. Kläms så att en rad aldrig blir mindre än att
 /// M/S/R/F-knapparna får plats (de slutar på 18 + 18 px från radens topp) eller slukar vyn.
 pub(crate) fn row_height(base: f32, scale: f32) -> f32 {
-    (base * scale).clamp(44.0, 400.0)
+    // Golvet är inte kosmetiskt: M/S/R/F slutar på 18 + 16 + 18 px och volym-/panreglagen
+    // på ~54 px, så en rad under 56 px ritar kontroller över nästa rad.
+    (base * scale).clamp(56.0, 400.0)
 }
 
 /// `header_w` och `row_h` är båda `f32`, och det här repot har redan kostat på sig en
@@ -3796,7 +3798,10 @@ mod row_height_tests {
     #[test]
     fn a_row_stays_between_its_limits() {
         assert_eq!(row_height(96.0, 1.0), 96.0);
-        assert_eq!(row_height(96.0, 0.0), 44.0);
+        // Golvet måste rymma kontrollraden (M/S/R/F slutar på 52, reglagen på 54 px) —
+        // 44 px ritade dem över nästa rad.
+        assert_eq!(row_height(96.0, 0.0), 56.0);
+        assert!(row_height(96.0, 0.5) >= 56.0, "0,5 × 96 = 48 fick inte klippa kontrollerna");
         assert_eq!(row_height(96.0, 100.0), 400.0);
         // Standardraden gånger zoom: 96 * 1,6 = 153,6 — kontrollerna (60 px) får plats.
         assert!((row_height(96.0, 1.6) - 153.6).abs() < 0.01);

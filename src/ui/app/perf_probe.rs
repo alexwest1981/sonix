@@ -78,16 +78,19 @@ fn phase() -> &'static Mutex<Phase> {
     PHASE.get_or_init(|| {
         std::thread::spawn(|| loop {
             std::thread::sleep(std::time::Duration::from_millis(200));
-            let Ok(mut p) = phase().lock() else { continue };
+            // Ett giftigt lås får inte göra proben till en tyst no-op: den finns för att
+            // säga till när appen är tyst, så den får inte själv dö utan ett spår.
+            let mut p = phase().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let idle = p.frame_done.elapsed().as_secs_f32();
             if hang_due(idle, p.reported) {
                 p.reported = true;
                 let (last, ms) = (p.last_done, p.last_ms);
                 drop(p);
-                let where_hint = if last == "skarmdump" {
-                    "efter update — alltså i fönstrets present"
-                } else {
-                    "fasen efter den"
+                let where_hint = match last {
+                    "skarmdump" => "efter update — alltså i fönstrets present",
+                    "bildruta-start" => "före första fasen i bildrutan (tema) — eller precis efter att en bildruta börjat",
+                    "" => "före den allra första fasen (uppstart)",
+                    _ => "fasen efter den",
                 };
                 log_line(&format!(
                     "[{:7.2}s] HÄNG: ingen bildruta på {idle:.1} s · senast klar: '{last}' ({ms:.1} ms) · blockeringen sitter i {where_hint}\n",
@@ -105,24 +108,32 @@ fn phase() -> &'static Mutex<Phase> {
 }
 
 impl SonixApp {
+    /// **Början av bildrutan.** Utan den står `last_done` kvar som `"skarmdump"` från förra
+    /// bildrutan, och en hängning före första fasen (i `theme::reload_if_changed` eller
+    /// `apply_style`) skulle pekas ut som fönstrets present — alltså i fel kod.
+    pub(crate) fn perf_frame_start(&mut self) {
+        let mut p = phase().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        p.last_done = "bildruta-start";
+        p.last_ms = 0.0;
+    }
+
     /// Märker en fas: `let t = Instant::now(); … ; self.perf_mark("fas", t);`
     pub(crate) fn perf_mark(&mut self, name: &'static str, since: Instant) {
         let ms = since.elapsed().as_secs_f32() * 1000.0;
         self.perf_marks.push((name, ms));
         // Hängproben behöver veta hur långt bildrutan kom innan den stannade.
-        if let Ok(mut p) = phase().lock() {
-            p.last_done = name;
-            p.last_ms = ms;
-            p.reported = false;
-        }
+        let mut p = phase().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        p.last_done = name;
+        p.last_ms = ms;
+        p.reported = false;
     }
 
     /// Stänger bildrutan: median var femte sekund, och varje spik med faserna.
     pub(crate) fn perf_frame_end(&mut self, start: Instant) {
-        if let Ok(mut p) = phase().lock() {
-            p.frame_done = Instant::now();
-            p.reported = false;
-        }
+        let mut p = phase().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        p.frame_done = Instant::now();
+        p.reported = false;
+        drop(p);
         let total = start.elapsed().as_secs_f32() * 1000.0;
         self.perf_frames.push_back(total);
         if self.perf_frames.len() > 600 {

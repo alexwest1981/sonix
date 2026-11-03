@@ -14,16 +14,11 @@
 //!
 //! Utan tak vore det här en klickloop: var tredje sekund revs strömmen ner och
 //! byggdes upp igen (129 gånger på sex minuter, mätt), och det hörs som ett klickande
-//! i takt. Efter `AUDIO_REBUILD_LIMIT` misslyckade försök i rad ger den upp och säger
-//! det i statusraden i stället.
+//! i takt. När bufferttrappan i `rebuild_step` är slut ger den upp och säger det i
+//! statusraden i stället.
 
 use crate::audio::engine::{audio_stream_frozen, rebuild_step, Rebuild, AUDIO_REBUILD_COOLDOWN_SECS};
 use super::*;
-
-/// Så här många dödsfall i rad innan vakthunden slutar bygga om: ett försök med samma
-/// inställning, ett med nästa buffert, ett med nästa — sedan är det enhetens eller
-/// maskinens fel, inte strömmens, och då ska appen säga det i stället för att klicka.
-const AUDIO_REBUILD_LIMIT: u32 = 3;
 
 /// Hur länge en ny ström ska leva innan den räknas som återhämtad (och trappan
 /// nollställs). Kortare än så hinner en trasig inställning aldrig visa sig.
@@ -35,13 +30,15 @@ impl SonixApp {
         // Kapas som autosparandet: en återupptagen bildruta efter en paus ska inte
         // räknas som en sekund av tystnad.
         let dt = ctx.input(|i| i.stable_dt).min(0.5);
-        // **Ingen omstart medan fönstret inte syns** (Alex 2026-11-03: "not responding" så fort
-        // han bytte arbetsyta). En omstart öppnar ljudenheten, och det är den enda här som kan
-        // blockera bildrutan i sekunder — på en enhet som svarar POLLERR kan den ta längre tid
-        // än window-managerns tålamod. Med fönstret borta finns inget att lyssna på, så räknaren
-        // står still: omstarten sker först när appen syns och svarar igen.
+        // **Ingen omstart medan fönstret är i bakgrunden och inget spelar** (Alex 2026-11-03:
+        // "not responding" så fort han bytte arbetsyta). En omstart öppnar ljudenheten, och det är
+        // den enda här som kan blockera bildrutan i sekunder — på en enhet som svarar POLLERR kan
+        // den ta längre tid än window-managerns tålamod. Villkoret är **båda**: står transporten
+        // och spelar lyssnar han även när fönstret ligger bakom ett annat, och då måste ljudet
+        // räddas; är inget på väg ut finns inget att rädda, och räknaren står still tills appen
+        // syns igen.
         let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
-        if !focused {
+        if !focused && !self.is_playing {
             self.audio_frozen_secs = 0.0;
             self.audio_recovered_secs = 0.0;
             self.audio_rebuild_cooldown = (self.audio_rebuild_cooldown - dt).max(0.0);
@@ -55,6 +52,7 @@ impl SonixApp {
             self.audio_recovered_secs += dt;
             if self.audio_recovered_secs >= AUDIO_RECOVERED_SECS {
                 self.audio_rebuild_failures = 0;
+                self.audio_gave_up = false;
             }
         } else {
             self.audio_frozen_secs += dt;
@@ -70,8 +68,10 @@ impl SonixApp {
         let step = rebuild_step(self.engine.buffer_frames, self.audio_rebuild_failures);
         if step == Rebuild::GiveUp {
             // Säg det en gång, inte varannan sekund.
-            if self.audio_rebuild_failures == AUDIO_REBUILD_LIMIT {
-                self.audio_rebuild_failures += 1;
+            // **Trappan vet bäst när den är slut.** En egen konstant kunde aldrig enas med
+            // `rebuild_step`s fyra steg — beskedet skrevs därför aldrig alls (EGM runda 4).
+            if !self.audio_gave_up {
+                self.audio_gave_up = true;
                 self.status_message = crate::tstatus!(
                     "⚠ ljudet kan inte hållas igång ens med {} frames — stäng av tunga program \
                      eller välj en annan enhet i ljudmodalen",

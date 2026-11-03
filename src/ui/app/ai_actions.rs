@@ -565,7 +565,9 @@ impl SonixApp {
     }
 
     /// **Rhai från modellen.** Skriptet kör mot en **kopia** av den valda tagningen — samma regel
-    /// som skriptrutan i pianorullen — så ett fel halvvägs lämnar tagningen orörd.
+    /// som skriptrutan i pianorullen — så ett fel halvvägs lämnar tagningen orörd. Men det kör
+    /// **utan filsystemet**: `load_midi`/`save_midi` finns inte i modellens motor, för ett skript
+    /// som kommer utifrån (HTTP/MCP) ska inte kunna skriva över vilken fil som helst.
     fn ai_write_script(&mut self, source: &str) -> String {
         if let Err(e) = crate::audio::ai_tools::script_is_allowed(source) {
             return format!("skript: {e}");
@@ -575,7 +577,7 @@ impl SonixApp {
             return "skript: ingen tagning vald".to_string();
         };
         let mut copy = pat.take.clone();
-        match crate::audio::script::run(source, &mut copy) {
+        match crate::audio::script::run_isolated(source, &mut copy) {
             Ok(lines) => {
                 let notes = copy.notes.len();
                 pat.take = copy;

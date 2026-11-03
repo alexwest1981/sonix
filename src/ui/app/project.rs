@@ -2489,7 +2489,9 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 notes: st.notes,
                 volume: st.volume,
                 pan: st.pan,
-                row_scale: st.row_scale,
+                // Filen är en egen väg in i samma värde: en handredigerad 5.0 ska inte
+                // bestämma hur långt nästa hjulnotch får hoppa.
+                row_scale: st.row_scale.clamp(0.5, 2.0),
                 muted: st.muted,
                 solo: st.solo,
                 regions,
@@ -2695,7 +2697,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         loaded_track.notes = st.notes;
         loaded_track.volume = st.volume;
         loaded_track.pan = st.pan;
-        loaded_track.row_scale = st.row_scale;
+        loaded_track.row_scale = st.row_scale.clamp(0.5, 2.0);
         loaded_track.muted = st.muted;
         loaded_track.solo = st.solo;
         loaded_track.regions = st.regions;

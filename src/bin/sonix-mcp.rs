@@ -70,11 +70,19 @@ impl Endpoint {
 
 /// Minimal HTTP/1.1 över loopback. `Ok((status, body))` även för 4xx/5xx, så anroparen kan
 /// säga vad appen svarade i stället för att bara "misslyckades".
-fn http(ep: &Endpoint, method: &str, path: &str, body: Option<&str>) -> Result<(u16, String), String> {
+fn http(
+    ep: &Endpoint,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    timeout: Duration,
+) -> Result<(u16, String), String> {
     let token = ep.token.clone();
     let mut stream = TcpStream::connect(("127.0.0.1", ep.port))
         .map_err(|e| format!("Sonix svarar inte på 127.0.0.1:{} ({e}) — är appen igång?", ep.port))?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    // Tidsgränsen ägs av anroparen: en socket som väntar 30 s kan aldrig hålla en
+    // kvittodeadline på 20 s.
+    let _ = stream.set_read_timeout(Some(timeout));
     let body = body.unwrap_or("");
     let request = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -111,7 +119,7 @@ fn to_mcp_tool(function: &serde_json::Value) -> serde_json::Value {
 }
 
 fn tools(ep: &Endpoint) -> Result<Vec<serde_json::Value>, String> {
-    let (status, body) = http(ep, "GET", "/v1/tools", None)?;
+    let (status, body) = http(ep, "GET", "/v1/tools", None, Duration::from_secs(10))?;
     if status != 200 {
         return Err(format!("GET /v1/tools svarade {status}: {body}"));
     }
@@ -132,14 +140,26 @@ fn tools(ep: &Endpoint) -> Result<Vec<serde_json::Value>, String> {
 /// Kör ett verktyg och väntar på kvittot.
 fn call(ep: &Endpoint, name: &str, arguments: serde_json::Value) -> Result<String, String> {
     let payload = serde_json::json!({"calls": [{"tool": name, "args": arguments}]}).to_string();
-    let (status, body) = http(ep, "POST", "/v1/execute", Some(&payload))?;
+    // `/v1/last` är destruktiv och har ingen korrelations-id: töm den **före** anropet, så ett
+    // kvitto från ett tidigare anrop (t.ex. ett som timade ut) inte kan bli svaret på det här.
+    let _ = http(ep, "GET", "/v1/last", None, Duration::from_secs(5));
+    let (status, body) = http(ep, "POST", "/v1/execute", Some(&payload), Duration::from_secs(5))?;
+    if status == 401 {
+        return Err("token avvisades (401) — tokenfilen och appen är inte samma".to_string());
+    }
     if status != 202 && status != 200 {
         return Err(format!("POST /v1/execute svarade {status}: {body}"));
     }
     let started = Instant::now();
     while started.elapsed() < RECEIPT_TIMEOUT {
         std::thread::sleep(Duration::from_millis(120));
-        let (s, b) = http(ep, "GET", "/v1/last", None)?;
+        let left = RECEIPT_TIMEOUT
+            .saturating_sub(started.elapsed())
+            .max(Duration::from_millis(500));
+        let (s, b) = http(ep, "GET", "/v1/last", None, left)?;
+        if s == 401 {
+            return Err("token avvisades (401) — tokenfilen och appen är inte samma".to_string());
+        }
         if s != 200 {
             continue;
         }
@@ -149,8 +169,10 @@ fn call(ep: &Endpoint, name: &str, arguments: serde_json::Value) -> Result<Strin
             }
         }
     }
-    Ok(format!(
-        "{name}: köat i appen men inget kvitto kom inom {} s — appen är upptagen (export, rendering eller en modal)",
+    // **Ärligt fel, inte en tyst framgång**: anropet kan ha körts, eller inte. En MCP-klient
+    // avgör på `isError`, så ett "kanske" får aldrig se ut som ett kvitto.
+    Err(format!(
+        "{name}: inget kvitto inom {} s — appen är upptagen (export, rendering eller en modal); anropet kan ändå ha körts",
         RECEIPT_TIMEOUT.as_secs()
     ))
 }
@@ -249,16 +271,23 @@ mod tests {
     use std::net::TcpListener;
 
     /// En attrapp för appens AI-yta: samma tre rutter, inget UI.
-    fn mock_app() -> (u16, std::thread::JoinHandle<()>) {
+    fn mock_app(stale_receipt: Option<&'static str>) -> (u16, std::thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("addr").port();
         let handle = std::thread::spawn(move || {
-            for _ in 0..4 {
+            let mut last_calls = 0u32;
+            for _ in 0..8 {
                 let Ok((mut s, _)) = listener.accept() else { return };
                 let mut buf = [0u8; 4096];
                 let n = s.read(&mut buf).unwrap_or(0);
                 let req = String::from_utf8_lossy(&buf[..n]).to_string();
-                let body = if req.starts_with("GET /v1/tools") {
+                let body = if req.starts_with("GET /v1/last") && stale_receipt.is_some() && last_calls == 0 {
+                    last_calls += 1;
+                    format!("[{}]", serde_json::json!(stale_receipt.unwrap()))
+                } else if req.starts_with("GET /v1/last") && stale_receipt.is_some() && last_calls == 1 {
+                    last_calls += 1;
+                    "[]".to_string()
+                } else if req.starts_with("GET /v1/tools") {
                     r#"[{"type":"function","function":{"name":"set_tempo","description":"Sätter tempo.","parameters":{"type":"object","properties":{"bpm":{"type":"number"}},"required":["bpm"]}}}]"#.to_string()
                 } else if req.starts_with("POST /v1/execute") {
                     "{\"queued\":1}".to_string()
@@ -313,7 +342,7 @@ mod tests {
     /// Hela vägen mot en attrapp: lista verktyg, kör ett, och få appens kvitto tillbaka.
     #[test]
     fn tools_list_and_call_go_through_the_apps_http_surface() {
-        let (port, _server) = mock_app();
+        let (port, _server) = mock_app(None);
         let ep = endpoint(port);
 
         let list = handle(&serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}), &ep)
@@ -333,5 +362,24 @@ mod tests {
                 .contains("tempo"),
             "kvittot ska komma från appen: {call}"
         );
+    }
+
+    /// Ett kvitto som ligger kvar från ett tidigare anrop får inte bli svaret på nästa:
+    /// `/v1/last` har ingen korrelations-id, så adaptern tömmer den före anropet.
+    #[test]
+    fn a_stale_receipt_is_not_returned_as_the_answer() {
+        let (port, _server) = mock_app(Some("gammalt kvitto från förra anropet"));
+        let ep = endpoint(port);
+        let answer = handle(
+            &serde_json::json!({
+                "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                "params": {"name": "set_tempo", "arguments": {"bpm": 128}}
+            }),
+            &ep,
+        )
+        .expect("svar");
+        let text = answer["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(!text.contains("gammalt"), "gammalt kvitto läckte: {text}");
+        assert!(text.contains("tempo"), "fel kvitto: {text}");
     }
 }

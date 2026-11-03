@@ -27,6 +27,18 @@ const KEY_RANGE: std::ops::RangeInclusive<u8> = 0..=127;
 /// Kör ett skript mot en tagning. `Ok` innehåller det skriptet skrev med `print`, `Err` är
 /// felet som ska visas för användaren (rad och kolumn kommer från Rhai).
 pub fn run(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
+    run_with_io(source, take, true)
+}
+
+/// **Samma skript, utan filsystemet.** `load_midi`/`save_midi` registreras inte alls, så ett
+/// skript som kommer från en AI-modell (via HTTP/MCP, utan någon vid tangentbordet) inte kan
+/// läsa eller skriva vilken fil som helst på maskinen. Den betrodda skriptrutan i pianorullen
+/// använder `run`.
+pub fn run_isolated(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
+    run_with_io(source, take, false)
+}
+
+fn run_with_io(source: &str, take: &mut Take, allow_io: bool) -> Result<Vec<String>, String> {
     // Kopian är poängen: allt nedan muterar `notes`, och tagningen skrivs bara tillbaka om
     // skriptet gick hela vägen.
     let notes = take.notes.clone();
@@ -106,6 +118,7 @@ pub fn run(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
     // som redan finns i motorn (`smf`), alltså ingen ny parser — bara en yta för skript.
     {
         let shared = std::rc::Rc::clone(&shared);
+        if allow_io {
         engine.register_fn("load_midi", move |path: &str| -> i64 {
             let Ok(bytes) = std::fs::read(path) else {
                 return -1;
@@ -131,9 +144,11 @@ pub fn run(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
             }
             added
         });
+        }
     }
     {
         let shared = std::rc::Rc::clone(&shared);
+        if allow_io {
         engine.register_fn("save_midi", move |path: &str, bpm: f64| -> bool {
             let notes = shared.borrow();
             // Samma omräkning som läsaren: ett steg är en sextondel = PPQ / 4 ticks.
@@ -154,6 +169,7 @@ pub fn run(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
             let bytes = crate::audio::smf::write_midi(bpm as f32, &[track]);
             std::fs::write(path, bytes).is_ok()
         });
+        }
     }
 
     // `print` är Rhais egen funktion; texten fångas med `on_print` i stället för att
@@ -245,6 +261,29 @@ mod tests {
         assert_eq!(empty.notes[0].key, 60);
         assert!((empty.notes[0].pos - 0.0).abs() < 0.01);
         assert!((empty.notes[1].pos - 4.0).abs() < 0.01, "steg 4, fick {}", empty.notes[1].pos);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Modellens skript når inte filsystemet.** Samma `save_midi` som provet ovan, men via
+    /// `run_isolated`: funktionen finns inte, tagningen är orörd och ingen fil skapas. Det är
+    /// gränsen mellan en människa vid skriptrutan och ett skript som kommer över HTTP/MCP.
+    #[test]
+    fn a_model_script_cannot_touch_the_filesystem() {
+        let dir = std::env::temp_dir().join(format!("sonix_script_isolated_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("skapas-inte.mid");
+        let path_str = path.to_string_lossy().replace('\\', "/");
+
+        let mut t = take();
+        let before = t.notes.len();
+        let err = run_isolated(&format!("save_midi(\"{path_str}\", 120.0)"), &mut t)
+            .expect_err("save_midi ska inte finnas i modellens motor");
+        assert!(
+            err.to_lowercase().contains("save_midi") || err.to_lowercase().contains("not found"),
+            "felet ska namnge funktionen: {err}"
+        );
+        assert!(!path.exists(), "ingen fil fick skapas: {}", path.display());
+        assert_eq!(t.notes.len(), before, "tagningen ska vara orörd");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
