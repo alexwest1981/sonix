@@ -2890,10 +2890,18 @@ impl SonixApp {
                                 ui.close_menu();
                             }
                             if ui.button(crate::i18n::t("🗑 Radera blocket")).clicked() {
-                                if let Some(track) = self.playlist_tracks.get_mut(menu_track)
-                                    && let Some(slot) = track.clips.get_mut(menu_bar)
-                                {
-                                    *slot = None;
+                                let occupied = self
+                                    .playlist_tracks
+                                    .get(menu_track)
+                                    .and_then(|t| t.clips.get(menu_bar))
+                                    .is_some_and(|c| c.is_some());
+                                // Samma regel som Rita/Radera-verktyget: borttagningen ska gå att
+                                // ångra. Steget tas före lånet av spårlistan.
+                                if occupied {
+                                    self.push_undo("Radera mönsterblock");
+                                    if let Some(track) = self.playlist_tracks.get_mut(menu_track) {
+                                        track.clips[menu_bar] = None;
+                                    }
                                 }
                                 self.pattern_menu = None;
                                 ui.close_menu();
@@ -3167,6 +3175,14 @@ impl SonixApp {
                         }
 
                         if let Some((c_bar, maybe_pat)) = clip_action {
+                            // **Ett klick med Rita/Radera är en strukturell ändring.** Utan det
+                            // här steget gick ett felskapat P-block inte att ångra — och
+                            // standardverktyget är just Rita, så ett klick i tidslinjen ritar.
+                            self.push_undo(if maybe_pat.is_some() {
+                                "Rita mönsterblock"
+                            } else {
+                                "Radera mönsterblock"
+                            });
                             // Blocket är så långt som patternet. Allt som låg i spannet tas
                             // bort först, annars kunde ett gammalt block börja inuti det nya.
                             let span = maybe_pat
