@@ -84,6 +84,38 @@ pub fn parse_file_name(name: &str) -> Option<(String, u64)> {
 /// Används för att svara på "har något ändrats sedan förra sparningen?" utan att
 /// jämföra hela strukturen. Ett ändrat fält ger ett annat värde; identiskt
 /// innehåll ger alltid samma.
+/// **Vad en autosave ska göra**, givet fingeravtrycken. Ren funktion, så regeln går att pröva
+/// utan fönster och utan disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutosavePlan {
+    Write,
+    Skip,
+}
+
+/// **Vad en autosave ska göra**, givet fingeravtrycken: `last_fp` är läget vi senast skyddade,
+/// `disk_fp` fingeravtrycket på den fil användaren själv sparat (om den gick att läsa).
+/// Identiskt med något av dem betyder att det inte finns något att skydda — och ett orörligt
+/// projekt ska inte rotera bort sin egen historik.
+pub fn plan(fp: u64, last_fp: Option<u64>, disk_fp: Option<u64>) -> AutosavePlan {
+    if last_fp == Some(fp) || disk_fp == Some(fp) {
+        AutosavePlan::Skip
+    } else {
+        AutosavePlan::Write
+    }
+}
+
+/// Svaret från autosavetråden. Tråden rör aldrig appens fält — den skickar det här.
+#[derive(Debug, Clone)]
+pub enum AutosaveOutcome {
+    Wrote {
+        fp: u64,
+        stamp: u64,
+        removed: usize,
+    },
+    Unchanged(u64),
+    Failed(String),
+}
+
 pub fn fingerprint(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
@@ -258,6 +290,16 @@ pub fn relative_age(stamp: u64, now: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Identiskt läge skrivs inte om.** Regeln låg förut inbakat i `maybe_autosave`; när
+    /// skrivningen flyttades till en tråd flyttade den hit, där den går att pröva utan disk.
+    #[test]
+    fn an_unchanged_project_is_not_written() {
+        assert_eq!(plan(7, Some(7), None), AutosavePlan::Skip);
+        assert_eq!(plan(7, None, Some(7)), AutosavePlan::Skip);
+        assert_eq!(plan(7, Some(8), Some(9)), AutosavePlan::Write);
+        assert_eq!(plan(7, None, None), AutosavePlan::Write);
+    }
 
     fn tmpdir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

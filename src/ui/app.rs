@@ -869,6 +869,9 @@ pub struct SonixApp {
     /// muterande funktion, så en autosave som skrevs där skulle fånga läget
     /// före ändringen (och därmed hoppas över som "oförändrat").
     pub autosave_pending: bool,
+    /// Autosavetråden: ett jobb i taget, svaret läses i `poll_autosave`. Serialiseringen och
+    /// skrivningen ligger utanför UI-tråden.
+    pub autosave_in_flight: Option<std::sync::mpsc::Receiver<crate::autosave::AutosaveOutcome>>,
     /// Mixer-undon (Fas 6.2): mixerns läge senast det var i vila, plus dess
     /// sammanfattning och om pekaren var nere förra frameen. Se `update`.
     pub mixer_settled_snapshot: Option<TimelineUndoSnapshot>,
@@ -1560,6 +1563,7 @@ impl SonixApp {
             autosave_last_fp: None,
             autosave_last_write: None,
             autosave_pending: false,
+            autosave_in_flight: None,
             mixer_settled_snapshot: None,
             mixer_settled_digest: 0,
             mixer_pointer_was_down: false,
@@ -1622,6 +1626,7 @@ impl eframe::App for SonixApp {
         let frame_start = std::time::Instant::now();
         self.perf_marks.clear();
         self.perf_frame_start();
+        self.perf_note_viewport(ctx.input(|i| i.viewport().focused.unwrap_or(true)));
         let mut mark = std::time::Instant::now();
 
         // Temafilen läses om när den ändras — annars krävdes en omstart för att se en färg.

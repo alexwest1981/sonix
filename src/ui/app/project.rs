@@ -9,6 +9,8 @@
 //! Rör inte: fältnamnen på disk är ett kontrakt mot filer som redan finns hos användaren.
 //! Döp aldrig om ett fält — lägg till det nya vid sidan av (`AutomationPointOnDisk` är mönstret).
 
+
+use crate::autosave::{AutosaveOutcome, AutosavePlan};
 use super::*;
 
 /// En autosave som erbjuds vid start (Fas 6.1).
@@ -2235,61 +2237,108 @@ pub fn maybe_autosave(&mut self) {
     {
         return;
     }
+    // En skrivning i taget. Att köa flera skulle bara skriva samma läge två gånger.
+    if self.autosave_in_flight.is_some() {
+        return;
+    }
 
+    // **Bara kopian görs på UI-tråden.** Serialiseringen, fingeravtrycket, läsningen av
+    // projektfilen och skrivningen flyttades till en tråd (Alex 2026-11-04: hängproben mätte
+    // ett block på 100,7 s i den här fasen). Kopian är strängar och tal — billig jämfört med
+    // `to_string_pretty` på en autosave som är 0,4–1 MB.
     let name = self.project_name.clone();
     let data = self.project_data(&name);
-    let Ok(json) = serde_json::to_string_pretty(&data) else {
-        return;
-    };
-    let bytes = json.as_bytes();
-    let fp = crate::autosave::fingerprint(bytes);
+    let last_fp = self.autosave_last_fp;
+    let project_file = self.project_file_path.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    self.autosave_in_flight = Some(rx);
+    self.autosave_pending = false;
 
-    if self.autosave_last_fp == Some(fp) {
-        return;
-    }
-    if let Some(path) = self.project_file_path.as_deref()
-        && std::fs::read(path)
-            .map(|disk| crate::autosave::fingerprint(&disk) == fp)
-            .unwrap_or(false)
-    {
-        // Identiskt med det användaren redan sparat — inget att skydda.
-        self.autosave_last_fp = Some(fp);
-        return;
-    }
-
-    let dir = crate::paths::paths().autosave_dir();
-    let stamp = crate::autosave::now_stamp();
-    match crate::autosave::save(&dir, &name, bytes, stamp) {
-        Ok(path) => {
-            let removed = crate::autosave::prune(&dir, crate::autosave::KEEP_PER_PROJECT)
-                .unwrap_or(0);
-            self.autosave_last_fp = Some(fp);
-            self.autosave_last_write = Some(stamp);
-            // Autosaven är en bakgrundshändelse och får inte skriva över en
-            // färsk ångringsbekräftelse. Mätt i GUI: ångringen märker
-            // ändringen för autosave, autosaven skriver nästa frame och
-            // ersatte "↶ Ångrade …" inom millisekunder — så användaren kunde
-            // inte läsa vad som just ångrades.
-            let fresh_undo = self.status_message.starts_with("↶ ")
-                || self.status_message.starts_with("↷ ");
-            if !fresh_undo {
-                self.status_message = if removed > 0 {
-                    crate::tstatus!(
-                        "🛟 Autosparade '{}' ({} äldre versioner städade)",
-                        name,
-                        removed
-                    )
-                } else {
-                    crate::tstatus!("🛟 Autosparade '{}'", name)
-                };
+    std::thread::Builder::new()
+        .name("autosave".into())
+        .spawn(move || {
+            let Ok(json) = serde_json::to_string_pretty(&data) else {
+                let _ = tx.send(AutosaveOutcome::Failed("kunde inte serialisera".to_string()));
+                return;
+            };
+            let bytes = json.as_bytes();
+            let fp = crate::autosave::fingerprint(bytes);
+            let disk_fp = project_file
+                .as_deref()
+                .and_then(|path| std::fs::read(path).ok())
+                .map(|disk| crate::autosave::fingerprint(&disk));
+            // Identiskt med det användaren redan sparat — inget att skydda.
+            if crate::autosave::plan(fp, last_fp, disk_fp) == AutosavePlan::Skip {
+                let _ = tx.send(AutosaveOutcome::Unchanged(fp));
+                return;
             }
-            let _ = path;
-        }
-        Err(e) => {
-            self.status_message = crate::tstatus!("⚠ Kunde inte autospara: {}", e);
+            let dir = crate::paths::paths().autosave_dir();
+            let stamp = crate::autosave::now_stamp();
+            match crate::autosave::save(&dir, &name, bytes, stamp) {
+                Ok(_) => {
+                    let removed = crate::autosave::prune(&dir, crate::autosave::KEEP_PER_PROJECT)
+                        .unwrap_or(0);
+                    let _ = tx.send(AutosaveOutcome::Wrote {
+                        fp,
+                        stamp,
+                        removed,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(AutosaveOutcome::Failed(e.to_string()));
+                }
+            }
+        })
+        .ok();
+}
+}
+
+impl SonixApp {
+    /// **Tar emot trådens svar.** Statusraden skrivs här, inte i tråden: en bakgrundstråd får
+    /// inte röra appens fält. Autosaven får heller inte skriva över en färsk
+    /// ångringsbekräftelse — mätt i GUI: den ersatte "↶ Ångrade …" inom millisekunder.
+    pub(crate) fn poll_autosave(&mut self) {
+        let Some(rx) = self.autosave_in_flight.as_ref() else {
+            return;
+        };
+        let outcome = match rx.try_recv() {
+            Ok(outcome) => outcome,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.autosave_in_flight = None;
+                return;
+            }
+        };
+        self.autosave_in_flight = None;
+        match outcome {
+            AutosaveOutcome::Wrote {
+                fp,
+                stamp,
+                removed,
+            } => {
+                self.autosave_last_fp = Some(fp);
+                self.autosave_last_write = Some(stamp);
+                let fresh_undo = self.status_message.starts_with("↶ ")
+                    || self.status_message.starts_with("↷ ");
+                if !fresh_undo {
+                    let name = self.project_name.clone();
+                    self.status_message = if removed > 0 {
+                        crate::tstatus!(
+                            "🛟 Autosparade '{}' ({} äldre versioner städade)",
+                            name,
+                            removed
+                        )
+                    } else {
+                        crate::tstatus!("🛟 Autosparade '{}'", name)
+                    };
+                }
+            }
+            AutosaveOutcome::Unchanged(fp) => self.autosave_last_fp = Some(fp),
+            AutosaveOutcome::Failed(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte autospara: {}", e);
+            }
         }
     }
-}
 }
 
 impl SonixApp {

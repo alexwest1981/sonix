@@ -470,6 +470,7 @@ impl SonixApp {
         // Autosave (Fas 6.1): kontrollera med jämna mellanrum om projektet
         // ändrats sedan det senast skyddades. Fingeravtrycket gör att ett
         // orörligt projekt inte roterar bort sin egen historik.
+        self.poll_autosave();
         self.autosave_accum += ctx.input(|i| i.stable_dt).min(0.5);
         if self.autosave_accum >= crate::autosave::INTERVAL_SECS {
             self.autosave_accum = 0.0;
@@ -1641,7 +1642,9 @@ impl SonixApp {
                         ui,
                         &self.spectrum_levels,
                         &crate::audio::spectrum::REGISTERS.map(|r| r.0),
-                        Vec2::new(128.0, 22.0),
+                        // 180 px → 29 px per fack, nog för "L-MID" (26 px), och 30 px högt
+                        // så etiketten får plats under staplarna.
+                        Vec2::new(180.0, 30.0),
                     );
 
                     ui.separator();
