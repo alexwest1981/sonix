@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.238] — 2026-11-04
+
 ### Fixed
 - **Ångringen kunde skriva in ett helt annat patterns steg.** Kanalerna i snapshotet är en spegel av
   *det* pattern som var valt när det togs, men `restore_snapshot` synkade dem in i det pattern som
@@ -1327,7 +1329,8 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.175...HEAD
+[0.9.238]: https://github.com/alexwest1981/sonix/compare/v0.9.175...v0.9.238
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.238...HEAD
 [0.9.175]: https://github.com/alexwest1981/sonix/compare/v0.9.174...v0.9.175
 [0.9.174]: https://github.com/alexwest1981/sonix/compare/v0.9.173...v0.9.174
 [0.9.173]: https://github.com/alexwest1981/sonix/compare/v0.9.167...v0.9.173
