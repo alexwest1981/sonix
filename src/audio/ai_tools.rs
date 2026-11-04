@@ -73,6 +73,19 @@ Gränser du måste känna till — säg dem till användaren i stället för att
 ";
 
 /// Verktygen modellen får anropa. `mode` styr vilka som kräver bekräftelse.
+/// **Vilka verktyg som ändrar projektet.** Ångringssteget hänger på den här listan och inte på
+/// kvittots `ok`: ett läsverktyg som svarar Ok får inte lägga ett tomt steg — `push_undo_snapshot`
+/// rensar `redo_stack`, så en enda läsande POST dödade användarens redo-historik — och ett verktyg
+/// som skrev halvt men svarade Err måste ha ett steg.
+///
+/// Okänt verktyg räknas som muterande: hellre ett steg för mycket än en ändring utan väg tillbaka.
+pub fn mutates(tool: &str) -> bool {
+    !matches!(
+        tool,
+        "analyze_mix" | "groove_report" | "plan_sections" | "set_key"
+    )
+}
+
 pub fn tool_schema() -> Value {
     json!([
         {"type": "function", "function": {"name": "set_tempo", "description": "Sätter projektets tempo i BPM (40–240).", "parameters": {"type": "object", "properties": {"bpm": {"type": "number"}}, "required": ["bpm"]}}},
@@ -836,5 +849,45 @@ mod measure_tests {
         assert!(script_is_allowed("   ").is_err());
         assert!(script_is_allowed(&"x".repeat(4001)).is_err());
         assert!(script_is_allowed(&"x".repeat(4000)).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod mutates_tests {
+    use super::*;
+
+    /// **Varje verktyg i schemat har en dom.** Ett verktyg som glöms i `mutates` får inget
+    /// ångringssteg, och då går AI:ns ändring inte att ta tillbaka. Läsverktygen är de fyra som
+    /// bevisligen inte rör projektet.
+    #[test]
+    fn every_tool_is_classified_as_mutating_or_not() {
+        let schema = tool_schema();
+        // Schemat är en **naken lista** — mätt mot den körande appen, och samma form som
+        // `sonix-mcp` läser. En framtida version kan lägga den under `tools`; båda läses.
+        let tools = match &schema {
+            serde_json::Value::Array(items) => items,
+            other => other
+                .get("tools")
+                .and_then(|t| t.as_array())
+                .expect("schemat ska vara en lista eller ha en verktygslista"),
+        };
+        for tool in tools {
+            let name = tool
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|n| n.as_str())
+                .expect("varje verktyg har ett namn");
+            let read_only = matches!(
+                name,
+                "analyze_mix" | "groove_report" | "plan_sections" | "set_key"
+            );
+            assert_eq!(
+                mutates(name),
+                !read_only,
+                "{name} är felklassat — ett glömt verktyg tappar sitt ångringssteg"
+            );
+        }
+        // Ett okänt namn ska hellre få ett steg för mycket än inget.
+        assert!(mutates("hittepa_verktyg"));
     }
 }

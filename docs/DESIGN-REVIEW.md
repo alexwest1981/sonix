@@ -116,3 +116,46 @@ för nycklar ≤24 tecken.
 
 **Emoji-typsnittet** (fynd 1) — 46 trasiga ikoner blir 0, och det är det enda fyndet som syns som
 *fel* i stället för som *svag*. Därefter **en accent per vy**: en regel, inte en omritning.
+
+---
+
+# Runda 2 (2026-11-04, `9383d59`)
+
+39 färska skärmdumpar; tio granskade. Runda 1:s fynd var **ofixade** — den här rundan skulle
+bekräfta eller avvisa dem, och leta där runda 1 inte tittade.
+
+## Bekräftat, med mått
+
+| Fynd | Mått i den här rundan |
+|---|---|
+| Registermätaren är oläsbar | sex etiketter i `Vec2::new(128.0, 22.0)` → slot **20,7 px**, "L-MID" ~26 px vid 10,5 px. Raden läses som **ett** ord |
+| F1-manualen kollapsar | fönstret mäter 1919 × **~210 px**, kapitelmenyn (230 px) syns inte alls, brödtexten är **en** rad som börjar mitt i ett ord och klipps i båda ändar |
+| Typskalans två steg | 834 storleksanrop, **587** på 12,5 px + **177** på 10,5 px = 92 %; steget 12,5 → 14,5 är **1,16** |
+
+## Nya fynd
+
+- 🟠 **"DJ FILTER & CRUSH XY PAD" skriver bara filter** (`channel_rack.rs:1418-1419`: X → cutoff,
+  Y → resonans). Ingen crush. Ingen axel är märkt i ytan.
+- 🟠 **"Mina inspelade ljud" har ingen tom-state** (`vocal_studio_view.rs:1222`): en tom svart yta
+  där resultatet ska visas.
+- 🟠 **Verktygsskärmarna är toppankrade**: sista innehållsrad i ett 1200 px-fönster lämnar
+  **48–75 %** tomt (05: 75 %, 11: 70 %, 13: 62 %, 09: 48 %).
+- 🟠 **Stäeditorn: tre av sex "knappar" i huvudraden är bara text** — primärhandlingen
+  (ISOLERA STÄMMA) är den enda som inte ser ut som en knapp.
+- 🟡 **Vocoder-reglagen visar bandindex, inte nivå** (`fx_rack_modal.rs:1145-1170`: `.text("{i}")`
+  med `.show_value(false)`), så "0" läses som värdet noll.
+- 🟡 **Stem-separatorn visar projektets tempo som om det vore filens** (`stem_view.rs:55`), och
+  med noll decimaler där transporten visar en.
+
+## Tillämpbara patchar (räknade, inte gissade)
+
+| Fynd | Ändringar | Risk |
+|---|---|---|
+| **Ikonfonten** | 1 ny funktion + 2 anropsrader + 3 typsnittsfiler | **`set_fonts` måste ligga i `CreationContext`, inte i `update`** — `apply_style` körs varje bildruta. Repot har ingen `FontDefinitions` alls i `src/`, så det är en ny funktion, inte en rad. Tre filer behövs (Symbols2 + Math + NotoEmoji, monokrom — NotoColorEmoji är CBDT och kan inte rastreras av ab_glyph). U+FF0B finns i ingen font → byt mot ASCII `+` i `fx_mixer_rack.rs:310` |
+| **Accentkontrast** | 31 sites i 13 filer + tröskeln i `readable_on` (0,45 → 0,1791) | Alla "aktiva" knappar byter från vit till svart text i mörkt läge (2,1 → 9,0:1). Rätt, men det syns |
+| **Typskalans fyra steg** | 44 sites i 20 filer | `FONT_S` +12 % träffar 587 sites; flikraden och den 210 px spårkolumnen kan klippas. `arranger.rs:989` blir död kod (mikspårets `FONT_M`-gren) |
+| **Radier & luft** | 197 radier + 334 `add_space` i 34 filer, 95 byter värde | 3,0 → 4,0 (35 sites) gör chips och småknappar märkbart rundare — den enda ändringen som syns på en skärmdump |
+
+**Rekommenderad ordning:** ikonfonten (oberoende, störst synlig vinst, rör inga tal) → accent­kontrasten
+(en rad + mekaniska edits, mätbar) → radier/luft (mekaniskt, jämför skärmdumpar) → typskalans fyra
+beslut (kräver en titt på flikraden).

@@ -1530,6 +1530,10 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         // Och det viktigaste: ångringspunkten bär hela ljudbilden. Glöms ett fält
         // i `current_snapshot`/`restore_snapshot` går ändringen att göra men inte
         // att ångra — då fångar jämförelsen här det.
+        //
+        // **Vad jämförelsen täcker:** spåren, bussar, VCA och `non_track` (det `mixer_digest`
+        // läser). Kanalracken och sektionerna är med i snapshotet men inte i digesten — de
+        // prövas av `stem_split`-proven och av att fälten finns i `TimelineUndoSnapshot`.
         let snapshot = TimelineUndoSnapshot {
             playlist_tracks: vec![base_track.clone()],
             patterns: Vec::new(),
@@ -1547,6 +1551,8 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             non_track: non_track_base(),
             channels: Vec::new(),
             sections: Vec::new(),
+            selected_pattern: 0,
+            export_loudness_idx: 0,
             selected_timeline_track: 0,
             selected_audio_region: None,
             song_time: 0.0,

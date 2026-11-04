@@ -1,8 +1,8 @@
 //! **AI:ns händer.** Tar modellens verktygsanrop och utför dem mot appen — efter validering.
 //!
-//! Bara verktyg som redan har en säker väg i appen finns här. `set_channel_instrument` finns i
-//! schemat men saknar utförare: att byta ljud kräver webbläsarens urval, och att gissa ett
-//! instrumentnamn vore värre än att säga att det inte är byggt.
+//! Bara verktyg som redan har en säker väg i appen finns här. `set_channel_instrument` har en
+//! utförare: den matchar namnet mot `SYNTH_PRESETS` och byter syntens förval — den *hittar inte
+//! på* ett ljud, och ett namn som inte finns avvisas med listan över kända.
 
 use std::sync::{Arc, Mutex};
 

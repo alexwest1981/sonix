@@ -65,10 +65,14 @@ utförde dem, och **listan töms när den läses**:
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4827/v1/last
-# ["tempo 132 BPM", "trumkomp 'house' i 2 takter"]
+# [{"ok":true,"text":"tempo 132 BPM"},{"ok":false,"text":"trumkomp: kanalen 'Kick' har redan steg"}]
 ```
 
-Ett avvisat anrop syns också här, med orsaken — t.ex. `"trumkomp: kanalen 'Kick' har redan steg"`.
+**Varje kvitto bär sin dom** (`ok`), inte bara sin text: en klient avgör framgång på flaggan,
+aldrig på texten. `ok: false` betyder att anropet inte gjorde det det bad om — och **ett POST med
+flera anrop är avvisat om något av dem avvisades**, så läs hela listan, inte bara det första
+kvittot. Formen är en lista av objekt sedan 2026-11-04; `sonix-mcp` läser även den äldre
+strängformen.
 
 ## Verktyg
 

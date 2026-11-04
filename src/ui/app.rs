@@ -1652,27 +1652,33 @@ impl eframe::App for SonixApp {
         if !queued.is_empty() {
             // **Ett ångringssteg per POST**, inte per anrop: en modell som skriver åtta takter
             // skickar oftast `write_pattern` + `write_notes`, och ett Ctrl+Z ska ta tillbaka
-            // båda. Snapshotet tas före körningen (det är då läget är ångringsbart) men läggs
-            // bara på historiken om något faktiskt gick igenom — annars blev ett avvisat anrop
-            // ett tomt steg i historiken.
+            // båda. Steget tas före körningen (det är då läget är ångringsbart) och läggs på
+            // historiken när POST:en innehåller ett **muterande** verktyg — inte när kvittot
+            // råkar vara Ok. `push_undo_snapshot` rensar `redo_stack`, så en läsande POST
+            // (analyze_mix) fick tidigare ett tomt steg och slängde användarens redo-historik.
             let label = if queued.len() > 1 {
                 format!("AI: {} +{}", queued[0].tool, queued.len() - 1)
             } else {
                 format!("AI: {}", queued[0].tool)
             };
-            let snapshot = self.current_snapshot(&label);
-            let mut any_ok = false;
+            let mutates = queued
+                .iter()
+                .any(|call| crate::audio::ai_tools::mutates(&call.tool));
+            let snapshot = if mutates {
+                Some(self.current_snapshot(&label))
+            } else {
+                None
+            };
             for call in queued {
                 let receipt = self.ai_execute_call(&call);
-                if receipt.ok {
-                    any_ok = true;
-                }
                 self.status_message = crate::tstatus!("🛰 {}", receipt.text);
                 if let Ok(mut r) = self.ai_service_results.lock() {
                     r.push(receipt);
                 }
             }
-            if any_ok {
+            // **Muterande men avvisat** ger ett tomt steg — billigare än en ändring utan väg
+            // tillbaka, och det kan bara hända när argumenten var fel (inget skrevs då).
+            if let Some(snapshot) = snapshot {
                 self.push_undo_snapshot(snapshot);
             }
             // shortcut: AI-vägens ångring är inte provtäckt — inget prov kan bygga en `SonixApp`

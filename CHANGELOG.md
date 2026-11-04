@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Ångringen kunde skriva in ett helt annat patterns steg.** Kanalerna i snapshotet är en spegel av
+  *det* pattern som var valt när det togs, men `restore_snapshot` synkade dem in i det pattern som
+  var valt *nu* — bytte man pattern mellan AI-anropet och Ctrl+Z skrevs A:s komp över B. Snapshotet
+  bär nu `selected_pattern`, och synken är borttagen: `patterns` är redan sanningen.
+- **En läsande AI-POST slängde redo-historiken.** Ett ångringssteg lades på historiken så snart
+  något svarade `Ok` — även `analyze_mix`, som inte rör projektet — och varje steg rensar
+  `redo_stack`. Steget styrs nu av `ai_tools::mutates(tool)`: ett halvt skrivet `write_pattern` får
+  alltid ett steg, en mätning aldrig.
+- **`export_loudness_idx` låg utanför snapshotet**, så `master_to_target` gick inte att ångra.
+- **MCP-adaptern läste bara första kvittot** i ett POST och gjorde ett kvitto utan `ok` till en
+  framgång. Nu läses alla, ett avvisat gör hela POST:en avvisad, och en post utan flagga är ett fel.
 - **Ett avvisat AI-anrop rapporterades som lyckat.** `ai_execute_call` returnerade bara en sträng, så
   adaptern satte `isError: false` på allt som kom fram — en modell som bad om 400 BPM fick ett
   kvitto och fortsatte som om det gällt. Nu bär varje kvitto sin dom (`AiReceipt { ok, text }`),

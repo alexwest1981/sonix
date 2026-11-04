@@ -118,6 +118,29 @@ fn to_mcp_tool(function: &serde_json::Value) -> serde_json::Value {
     })
 }
 
+/// Ett kvitto ur appens lista. **En trasig post är ett fel, inte en framgång** — adaptern är
+/// enda stället som sätter `isError`, så en gissning här gör hela `AiReceipt`-arbetet ogjort för
+/// MCP-klienten. En äldre app svarar med bara texten; då finns ingen dom och anropet räknas som
+/// lyckat, som förut.
+fn receipt(value: serde_json::Value) -> Result<String, String> {
+    match value {
+        serde_json::Value::String(text) => Ok(text),
+        serde_json::Value::Object(o) => {
+            let text = o
+                .get("text")
+                .and_then(|t| t.as_str())
+                .ok_or_else(|| "kvittot saknade text".to_string())?
+                .to_string();
+            match o.get("ok").and_then(|v| v.as_bool()) {
+                Some(true) => Ok(text),
+                Some(false) => Err(text),
+                None => Err(format!("{text} (kvittot saknade ok-flaggan)")),
+            }
+        }
+        other => Err(format!("okänt kvitto: {other}")),
+    }
+}
+
 fn tools(ep: &Endpoint) -> Result<Vec<serde_json::Value>, String> {
     let (status, body) = http(ep, "GET", "/v1/tools", None, Duration::from_secs(10))?;
     if status != 200 {
@@ -164,25 +187,22 @@ fn call(ep: &Endpoint, name: &str, arguments: serde_json::Value) -> Result<Strin
             continue;
         }
         if let Ok(lines) = serde_json::from_str::<Vec<serde_json::Value>>(&b) {
-            if let Some(first) = lines.into_iter().next() {
-                // **Appens dom, inte adapterns gissning.** En äldre app svarar med bara texten;
-                // då finns ingen flagga och anropet räknas som lyckat, som förut.
-                return match first {
-                    serde_json::Value::Object(o) => {
-                        let text = o
-                            .get("text")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        if o.get("ok").and_then(|v| v.as_bool()).unwrap_or(true) {
-                            Ok(text)
-                        } else {
-                            Err(text)
+            if !lines.is_empty() {
+                // **Alla kvitton i POST:en, inte bara det första.** Ett POST kan bära flera
+                // anrop, och om det andra avvisas får svaret inte se lyckat ut.
+                let mut texts = Vec::new();
+                let mut rejected = false;
+                for value in lines {
+                    match receipt(value) {
+                        Ok(text) => texts.push(text),
+                        Err(text) => {
+                            rejected = true;
+                            texts.push(text);
                         }
                     }
-                    serde_json::Value::String(text) => Ok(text),
-                    other => Ok(other.to_string()),
-                };
+                }
+                let joined = texts.join(" · ");
+                return if rejected { Err(joined) } else { Ok(joined) };
             }
         }
     }
@@ -288,7 +308,10 @@ mod tests {
     use std::net::TcpListener;
 
     /// En attrapp för appens AI-yta: samma tre rutter, inget UI.
-    fn mock_app(stale_receipt: Option<&'static str>, failure: bool) -> (u16, std::thread::JoinHandle<()>) {
+    fn mock_app(
+        stale_receipt: Option<&'static str>,
+        receipts: &'static str,
+    ) -> (u16, std::thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("addr").port();
         let handle = std::thread::spawn(move || {
@@ -308,10 +331,8 @@ mod tests {
                     r#"[{"type":"function","function":{"name":"set_tempo","description":"Sätter tempo.","parameters":{"type":"object","properties":{"bpm":{"type":"number"}},"required":["bpm"]}}}]"#.to_string()
                 } else if req.starts_with("POST /v1/execute") {
                     "{\"queued\":1}".to_string()
-                } else if failure {
-                    "[{\"ok\": false, \"text\": \"tempo 400 ligger utanför 40–240\"}]".to_string()
                 } else {
-                    "[{\"ok\": true, \"text\": \"🎚 tempo 128 BPM\"}]".to_string()
+                    receipts.to_string()
                 };
                 let status = if req.starts_with("POST /v1/execute") {
                     "202 Accepted"
@@ -361,7 +382,7 @@ mod tests {
     /// Hela vägen mot en attrapp: lista verktyg, kör ett, och få appens kvitto tillbaka.
     #[test]
     fn tools_list_and_call_go_through_the_apps_http_surface() {
-        let (port, _server) = mock_app(None, false);
+        let (port, _server) = mock_app(None, r#"[{"ok":true,"text":"🎚 tempo 128 BPM"}]"#);
         let ep = endpoint(port);
 
         let list = handle(&serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}), &ep)
@@ -387,7 +408,10 @@ mod tests {
     /// `/v1/last` har ingen korrelations-id, så adaptern tömmer den före anropet.
     #[test]
     fn a_stale_receipt_is_not_returned_as_the_answer() {
-        let (port, _server) = mock_app(Some("gammalt kvitto från förra anropet"), false);
+        let (port, _server) = mock_app(
+            Some("gammalt kvitto från förra anropet"),
+            r#"[{"ok":true,"text":"🎚 tempo 128 BPM"}]"#,
+        );
         let ep = endpoint(port);
         let answer = handle(
             &serde_json::json!({
@@ -402,12 +426,51 @@ mod tests {
         assert!(text.contains("tempo"), "fel kvitto: {text}");
     }
 
+    /// **Ett POST med flera anrop är avvisat om något av dem avvisades.** Förut lästes bara det
+    /// första kvittot, så ett halvt misslyckat POST såg lyckat ut.
+    #[test]
+    fn a_post_with_one_rejected_call_is_an_error() {
+        let (port, _server) = mock_app(
+            None,
+            r#"[{"ok":true,"text":"Kick: 8 slag"},{"ok":false,"text":"kanal 3 har redan steg"}]"#,
+        );
+        let ep = endpoint(port);
+        let answer = handle(
+            &serde_json::json!({
+                "jsonrpc": "2.0", "id": 6, "method": "tools/call",
+                "params": {"name": "write_pattern", "arguments": {}}
+            }),
+            &ep,
+        )
+        .expect("svar");
+        assert_eq!(answer["result"]["isError"], true, "{answer}");
+        let text = answer["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("Kick"), "båda kvittona ska med: {text}");
+        assert!(text.contains("kanal 3"), "båda kvittona ska med: {text}");
+    }
+
+    /// Ett kvitto utan `ok` får inte bli en framgång.
+    #[test]
+    fn a_receipt_without_the_flag_is_an_error() {
+        let (port, _server) = mock_app(None, r#"[{"text":"tempo 128 BPM"}]"#);
+        let ep = endpoint(port);
+        let answer = handle(
+            &serde_json::json!({
+                "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                "params": {"name": "set_tempo", "arguments": {"bpm": 128}}
+            }),
+            &ep,
+        )
+        .expect("svar");
+        assert_eq!(answer["result"]["isError"], true, "{answer}");
+    }
+
     /// **Ett avvisat anrop ska bli `isError: true`.** Appen sätter `ok:false` på kvittot, och
     /// adaptern får inte göra det till en framgång — annars rapporterar modellen ett tempo som
     /// aldrig sattes.
     #[test]
     fn a_rejected_call_becomes_is_error() {
-        let (port, _server) = mock_app(None, true);
+        let (port, _server) = mock_app(None, r#"[{"ok":false,"text":"tempo 400 ligger utanför 40–240"}]"#);
         let ep = endpoint(port);
         let answer = handle(
             &serde_json::json!({

@@ -43,3 +43,30 @@ källan av mig efter granskningen — de som inte höll är märkta *motbevisat*
 4. **MCP-testets täckning** (14): attrappen kontrollerar inte `Authorization`, och
    `{"tools": […]}`-grenen körs aldrig.
 5. **Dokumentens siffror** (15).
+
+---
+
+# Runda 5 — `c93b11f..9383d59` (kvittoreformen och ångringen)
+
+Samma tre granskare, nu på den kod som skrevs *för att åtgärda runda 4*. Två av fyndens allvar
+kom av att fixen själv var ny.
+
+| # | Fynd | Allvar | Status |
+|---|---|---|---|
+| 1 | Ångringen skrev kanalernas steg in i **det pattern som var valt nu**, inte det som hörde till snapshotet | 🔴 | **Åtgärdat** — `selected_pattern` i snapshotet, och `sync_active_pattern_from_ui()` borttagen ur `restore_snapshot` (den kunde bara skriva fel) |
+| 2 | Läsverktyg (`analyze_mix`) gav ett tomt ångringssteg och **slängde redo-historiken**; ett halvt `write_pattern` gav inget steg alls | 🔴 | **Åtgärdat** — `ai_tools::mutates(tool)` styr steget, inte kvittots `ok`. Prov: `every_tool_is_classified_as_mutating_or_not` |
+| 3 | `export_loudness_idx` låg utanför snapshotet | 🟡 | **Åtgärdat** — fältet tillagt |
+| 4 | `set_channel_instrument` ändrar tio globala synthfält som ingen snapshot bär, och schemat kräver `channel` som utföraren aldrig läser | 🟡 | **Öppet** — kräver synth-inställningarna i `NonTrackSound`; modulhuvudet som påstod att verktyget saknade utförare är rättat |
+| 5 | `plan_sections` lagrar bara en väntande plan; sektionerna läggs in av UI-knappen, som inte pushar något steg | 🟡 | **Öppet** |
+| 6 | MCP-adaptern läste bara **första** kvittot, och gjorde ett kvitto utan `ok` till en framgång | 🟡 | **Åtgärdat** — alla kvitton läses, ett avvisat gör hela POST:en avvisad, och en post utan `ok` är ett fel. Två nya prov |
+| 7 | Vaktprovet (`mixer_digest_covers_every_mixed_field`) mäter inte kanalerna, trots att det påstår att det fångar ett glömt snapshotfält | 🟡 | **Delvis** — kommentaren säger nu vad digesten täcker; digesten utökas inte, för den styr mixer-ångringens viloläge |
+| 8 | `groove_report` ger `Err` för "inga slag hittades" medan `analyze_mix` ger `Ok` för "tyst" — två regler för samma sak | 🟢 | **Öppet** |
+| 9 | `docs/AI-API.md` visade den gamla kvittoformen | 🟢 | **Åtgärdat** |
+
+## Kvar att ta
+
+1. Synth-inställningarna (10 fält) in i `NonTrackSound` + `LoadPreset` vid restore, så
+   `set_channel_instrument` går att ångra — **och ta bort `channel` ur dess schema**, som i dag
+   är ett argument utföraren struntar i.
+2. Ett snapshot i `apply_pending_plan` (UI-knappen som lägger in sektionerna).
+3. En regel för "mätningen hittade inget": antingen `Ok` i båda mätverktygen eller `Err` i båda.

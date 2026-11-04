@@ -228,6 +228,11 @@ pub struct TimelineUndoSnapshot {
     /// **Sektionerna.** `plan_sections` lägger dem i arrangemanget; utan dem i snapshotet
     /// överlevde de en ångring som påstod att inget hade hänt.
     pub sections: Vec<state::Section>,
+    /// **Vilket pattern som var valt.** `channels` är en spegel av *det* patternet, så utan det
+    /// här fältet skrev ångringen in kanalernas steg i vilket pattern som helst som råkade vara
+    /// valt när Ctrl+Z trycktes (EGM runda 5).
+    pub selected_pattern: usize,
+    pub export_loudness_idx: usize,
     pub selected_timeline_track: usize,
     pub selected_audio_region: Option<(usize, usize)>,
     pub song_time: f32,
@@ -1094,6 +1099,8 @@ pub(crate) fn current_snapshot(&self, description: &str) -> TimelineUndoSnapshot
     TimelineUndoSnapshot {
         channels: self.channels.clone(),
         sections: self.sections.clone(),
+        selected_pattern: self.selected_pattern,
+        export_loudness_idx: self.export_loudness_idx,
         playlist_tracks: self.playlist_tracks.clone(),
         patterns: self.patterns.clone(),
         bus_volume: self.bus_volume,
@@ -1160,7 +1167,11 @@ fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
     // Mönstren först, sedan UI-spegeln: `load_pattern_into_ui` skriver inte
     // över `patterns` med det gamla UI-läget, vilket `select_pattern` hade gjort.
     self.patterns = snapshot.patterns.clone();
+    // Mönstret som hör till snapshotet, inte det som är valt nu: kanalerna nedan är spegeln av
+    // *det* patternet.
+    self.selected_pattern = snapshot.selected_pattern;
     self.load_pattern_into_ui(self.selected_pattern);
+    self.export_loudness_idx = snapshot.export_loudness_idx;
     self.bus_volume = snapshot.bus_volume;
     self.bus_muted = snapshot.bus_muted;
     self.bus_automation = snapshot.bus_automation.clone();
@@ -1171,11 +1182,11 @@ fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
     // **Mastern och plugin-kurvorna** (Fas 6.2): `apply_non_track_sound` nollar kurvornas
     // `last_sent` och skickar hela kedjan till motorn, så ångringen **hörs** och inte bara syns.
     self.apply_non_track_sound(&snapshot.non_track);
-    // Kanalerna och sektionerna tillbaka, och kanalernas steg/noter till motorn: annars syns
-    // ångringen i racket men hörs inte i nästa takt.
+    // Kanalerna och sektionerna tillbaka. **Ingen `sync_active_pattern_from_ui()` här**: den
+    // kopierar kanalerna *in i* `patterns[selected]`, och efter en ångring är `patterns` redan
+    // sanningen — synken kunde bara skriva fel mönsters steg över ett annat.
     self.channels = snapshot.channels.clone();
     self.sections = snapshot.sections.clone();
-    self.sync_active_pattern_from_ui();
     self.bpm = snapshot.bpm;
     self.tempo_points = snapshot.tempo_points.clone();
     self.selected_timeline_track = snapshot.selected_timeline_track;
