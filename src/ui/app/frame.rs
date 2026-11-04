@@ -841,7 +841,21 @@ impl SonixApp {
                 }
 
                 if i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace) {
-                    self.delete_selected_region();
+                    // **Delete tar det man ser markerat.** Är spåren markerade och inget klipp,
+                    // är det spåren som ska bort — inte ett klipp i ett av dem.
+                    if self.selected_regions.is_empty()
+                        && self.selected_audio_region.is_none()
+                        && self.selected_tracks.len() > 1
+                    {
+                        let first = *self
+                            .selected_tracks
+                            .iter()
+                            .min()
+                            .unwrap_or(&self.selected_timeline_track);
+                        self.delete_track(first);
+                    } else {
+                        self.delete_selected_region();
+                    }
                 }
 
                 // Piltangenter nudgar markeringen; Shift tar en hel takt. Pianorullen

@@ -683,6 +683,45 @@ pub fn plan_region_paste(
 /// `toggle` (Ctrl/Cmd) växlar posten, `shift` tar spannet från den primära posten,
 /// annars blir det bara den klickade. Markeringen får aldrig bli tom: då tystnar
 /// kommandona utan att någon förstår varför.
+/// **Vilka spår en borttagning tar.** Hela markeringen när det klickade spåret är med i den,
+/// annars bara det klickade. En mikrofon och minst ett spår lämnas alltid kvar: resten av
+/// appen utgår från minst ett spår, och utan mikrofon tappar den sin ingång.
+///
+/// Ren funktion, så reglerna går att pröva utan fönster — samma skäl som `clicked_selection`.
+pub fn tracks_to_delete(
+    len: usize,
+    selected: &std::collections::BTreeSet<usize>,
+    clicked: usize,
+    is_mic: &[bool],
+) -> Vec<usize> {
+    if clicked >= len {
+        return Vec::new();
+    }
+    let mut targets: Vec<usize> = if selected.contains(&clicked) {
+        selected.iter().copied().filter(|i| *i < len).collect()
+    } else {
+        vec![clicked]
+    };
+    targets.sort_unstable();
+    targets.dedup();
+
+    let mics = is_mic.iter().filter(|m| **m).count();
+    let marked_mics = targets
+        .iter()
+        .filter(|i| is_mic.get(**i).copied().unwrap_or(false))
+        .count();
+    if mics > 0 && marked_mics == mics
+        && let Some(last) = (0..len).rev().find(|i| is_mic.get(*i).copied().unwrap_or(false))
+    {
+        targets.retain(|i| *i != last);
+    }
+    // Alla spår på en gång lämnar ett kvar.
+    if targets.len() >= len {
+        targets.pop();
+    }
+    targets
+}
+
 pub fn clicked_selection(
     current: &std::collections::BTreeSet<usize>,
     primary: usize,
@@ -2452,6 +2491,32 @@ mod track_group_tests {
 
     /// **En ihopfälld grupp visar sitt första spår och gömmer resten** — och det första syns
     /// även när gruppen är ihopfälld, annars gick den aldrig att fälla upp igen.
+    /// **En borttagning tar hela markeringen.** Alex 2026-11-04: fem markerade spår och
+    /// *Ta bort spår* tog bara det man högerklickade på.
+    #[test]
+    fn a_delete_takes_the_whole_marked_selection() {
+        use std::collections::BTreeSet;
+        let mic_last = [false, false, false, false, true];
+
+        // Klickat spår är med i markeringen → hela markeringen, i stigande ordning.
+        let sel: BTreeSet<usize> = [0, 1, 3].into_iter().collect();
+        assert_eq!(tracks_to_delete(5, &sel, 1, &mic_last), vec![0, 1, 3]);
+
+        // Klickat spår utanför markeringen → bara det.
+        assert_eq!(tracks_to_delete(5, &sel, 2, &mic_last), vec![2]);
+
+        // Mikrofonen står kvar även när allt är markerat.
+        let all: BTreeSet<usize> = (0..5).collect();
+        assert_eq!(tracks_to_delete(5, &all, 0, &mic_last), vec![0, 1, 2, 3]);
+
+        // Utan mikrofon lämnas det sista spåret kvar — appen har alltid minst ett.
+        let both: BTreeSet<usize> = [0, 1].into_iter().collect();
+        assert_eq!(tracks_to_delete(2, &both, 0, &[false, false]), vec![0]);
+
+        // Ett spår som inte finns tar ingenting.
+        assert!(tracks_to_delete(3, &BTreeSet::new(), 9, &[false; 3]).is_empty());
+    }
+
     /// **Skift tar spannet, Ctrl växlar, vanligt klick börjar om.** Reglerna är hela
     /// flödet när man markerar flera spår; därför prövas de utan fönster.
     #[test]
