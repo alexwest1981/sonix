@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **🎯 Källans tempo** — en ruta (högerklick på ett klipp) där filens tempo skrivs in för hand,
+  med `÷2` och `×2` för det vanliga oktavfelet. Talet avgör hur mycket ljudet sträcks, och
+  klippets längd skalas med `nytt/gammalt` så att **samma källstycke ligger kvar** på tidslinjen —
+  annars kapades låten när ett tempo som mätts till hälften rättades. Klippets meny visar nu
+  också `källa X BPM → projekt Y BPM`, så en felmätning syns i stället för att gissas.
+  Stämmor ärver talet, så rätt tempo **före** separation ger rätt tempo i alla fyra stämmorna.
+
+### Fixed
+- **Flera markerade spår togs bort ett i taget.** *Ta bort spår*, och Delete när spåren var
+  markerade, tog bara det spår man klickat på. Nu tar borttagningen hela markeringen i ett
+  ångringssteg; en mikrofon och minst ett spår lämnas alltid kvar.
+
 ## [0.9.238] — 2026-11-04
 
 ### Fixed
