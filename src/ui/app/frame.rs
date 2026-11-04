@@ -447,6 +447,7 @@ impl SonixApp {
         self.poll_remote_audio_generation();
         self.poll_suno();
         self.poll_stem_separation();
+        self.poll_stem_split();
     }
 
     /// Klockan och husbytet för en bildruta: sequencern, automationen, animationsfasen,

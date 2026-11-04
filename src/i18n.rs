@@ -373,6 +373,19 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spåret har {} klipp — separera ett klipp i taget" => "The track has {} clips — separate one clip at a time",
+        "⚠️ '{}' är en binär groove-fil — 103 av Abletons 219 mallar är det. Välj en XML-mall" => "⚠️ '{}' is a binary groove file — 103 of Ableton's 219 templates are. Pick an XML template",
+        "En separation pågår redan — vänta tills den är klar" => "A separation is already running — wait until it finishes",
+        "Spåret finns inte" => "The track does not exist",
+        "Spåret har inget ljud att separera" => "The track has no audio to separate",
+        "Spåret är tomt" => "The track is empty",
+        "En separation pågår redan" => "A separation is already running",
+        "🎚 Separera stämmor (4 spår)" => "🎚 Separate stems (4 tracks)",
+        "stämmor" => "stems",
+        "🎤 Vocals" => "🎤 Vocals",
+        "🥁 Drums" => "🥁 Drums",
+        "🎸 Bass" => "🎸 Bass",
+        "🎹 Instruments" => "🎹 Instruments",
         "⏳ Already waiting on Suno." => "⏳ Already waiting on Suno.",
         "⏳ Suno is creating the two takes…" => "⏳ Suno is creating the two takes…",
         "🎧 Lyssna — 1 kredit" => "🎧 Listen — 1 credit",
@@ -3045,6 +3058,18 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spåret har {} klipp — separera ett klipp i taget" => "Sporet har {} klip — separer ét klip ad gangen",
+        "En separation pågår redan — vänta tills den är klar" => "En separation kører allerede — vent til den er færdig",
+        "Spåret finns inte" => "Sporet findes ikke",
+        "Spåret har inget ljud att separera" => "Sporet har ingen lyd at separere",
+        "Spåret är tomt" => "Sporet er tomt",
+        "En separation pågår redan" => "En separation kører allerede",
+        "🎚 Separera stämmor (4 spår)" => "🎚 Separer stemmer (4 spor)",
+        "stämmor" => "stemmer",
+        "🎤 Vocals" => "🎤 Vokal",
+        "🥁 Drums" => "🥁 Trommer",
+        "🎸 Bass" => "🎸 Bas",
+        "🎹 Instruments" => "🎹 Instrumenter",
         "⏳ Already waiting on Suno." => "⏳ Venter allerede på Suno.",
         "⏳ Suno is creating the two takes…" => "⏳ Suno skaber de to optagelser…",
         "🎧 Lyssna — 1 kredit" => "🎧 Lyt — 1 kredit",
@@ -5676,6 +5701,18 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spåret har {} klipp — separera ett klipp i taget" => "Sporet har {} klipp — separer ett klipp om gangen",
+        "En separation pågår redan — vänta tills den är klar" => "En separasjon kjører allerede — vent til den er ferdig",
+        "Spåret finns inte" => "Sporet finnes ikke",
+        "Spåret har inget ljud att separera" => "Sporet har ingen lyd å separere",
+        "Spåret är tomt" => "Sporet er tomt",
+        "En separation pågår redan" => "En separasjon kjører allerede",
+        "🎚 Separera stämmor (4 spår)" => "🎚 Separer stemmer (4 spor)",
+        "stämmor" => "stemmer",
+        "🎤 Vocals" => "🎤 Vokal",
+        "🥁 Drums" => "🥁 Trommer",
+        "🎸 Bass" => "🎸 Bass",
+        "🎹 Instruments" => "🎹 Instrumenter",
         "⏳ Already waiting on Suno." => "⏳ Venter allerede på Suno.",
         "⏳ Suno is creating the two takes…" => "⏳ Suno lager de to opptakene…",
         "🎧 Lyssna — 1 kredit" => "🎧 Lytt — 1 kreditt",
@@ -8307,6 +8344,18 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spåret har {} klipp — separera ett klipp i taget" => "Die Spur hat {} Clips — trenne einen Clip nach dem anderen",
+        "En separation pågår redan — vänta tills den är klar" => "Eine Trennung läuft bereits — warte, bis sie fertig ist",
+        "Spåret finns inte" => "Die Spur existiert nicht",
+        "Spåret har inget ljud att separera" => "Die Spur hat kein Audio zum Trennen",
+        "Spåret är tomt" => "Die Spur ist leer",
+        "En separation pågår redan" => "Eine Trennung läuft bereits",
+        "🎚 Separera stämmor (4 spår)" => "🎚 Stimmen trennen (4 Spuren)",
+        "stämmor" => "Stimmen",
+        "🎤 Vocals" => "🎤 Gesang",
+        "🥁 Drums" => "🥁 Schlagzeug",
+        "🎸 Bass" => "🎸 Bass",
+        "🎹 Instruments" => "🎹 Instrumente",
         "⏳ Already waiting on Suno." => "⏳ Warte bereits auf Suno.",
         "⏳ Suno is creating the two takes…" => "⏳ Suno erstellt die zwei Takes…",
         "🎧 Lyssna — 1 kredit" => "🎧 Anhören — 1 Guthaben",
@@ -10938,6 +10987,18 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spåret har {} klipp — separera ett klipp i taget" => "La pista tiene {} clips — separa un clip a la vez",
+        "En separation pågår redan — vänta tills den är klar" => "Ya hay una separación en curso — espera a que termine",
+        "Spåret finns inte" => "La pista no existe",
+        "Spåret har inget ljud att separera" => "La pista no tiene audio que separar",
+        "Spåret är tomt" => "La pista está vacía",
+        "En separation pågår redan" => "Ya hay una separación en curso",
+        "🎚 Separera stämmor (4 spår)" => "🎚 Separar stems (4 pistas)",
+        "stämmor" => "stems",
+        "🎤 Vocals" => "🎤 Voz",
+        "🥁 Drums" => "🥁 Batería",
+        "🎸 Bass" => "🎸 Bajo",
+        "🎹 Instruments" => "🎹 Instrumentos",
         "⏳ Already waiting on Suno." => "⏳ Ya esperando a Suno.",
         "⏳ Suno is creating the two takes…" => "⏳ Suno está creando las dos tomas…",
         "🎧 Lyssna — 1 kredit" => "🎧 Escuchar — 1 crédito",
@@ -13569,6 +13630,18 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spåret har {} klipp — separera ett klipp i taget" => "La piste a {} clips — sépare un clip à la fois",
+        "En separation pågår redan — vänta tills den är klar" => "Une séparation est déjà en cours — attends qu'elle se termine",
+        "Spåret finns inte" => "La piste n'existe pas",
+        "Spåret har inget ljud att separera" => "La piste n'a pas d'audio à séparer",
+        "Spåret är tomt" => "La piste est vide",
+        "En separation pågår redan" => "Une séparation est déjà en cours",
+        "🎚 Separera stämmor (4 spår)" => "🎚 Séparer les stems (4 pistes)",
+        "stämmor" => "stems",
+        "🎤 Vocals" => "🎤 Voix",
+        "🥁 Drums" => "🥁 Batterie",
+        "🎸 Bass" => "🎸 Basse",
+        "🎹 Instruments" => "🎹 Instruments",
         "⏳ Already waiting on Suno." => "⏳ Déjà en attente de Suno.",
         "⏳ Suno is creating the two takes…" => "⏳ Suno crée les deux prises…",
         "🎧 Lyssna — 1 kredit" => "🎧 Écouter — 1 crédit",

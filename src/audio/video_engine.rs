@@ -601,7 +601,9 @@ mod tests {
         let mut ages: Vec<f64> = Vec::with_capacity(30);
         // 30 frames take 1.2 s of clip; the deadline is a hang guard, not a speed claim, so
         // it is generous enough that a loaded machine cannot starve the child past it.
-        let deadline = Instant::now() + Duration::from_secs(20);
+        // Hängvakt, inte ett svarstidskrav: i en full svit startar 1 400 prov samtidigt och
+        // ffmpeg konkurrerar med dem om processorn — 20 s räckte inte då (mätt 2026-11-04).
+        let deadline = Instant::now() + Duration::from_secs(60);
         while ages.len() < 30 && Instant::now() < deadline {
             match play.latest() {
                 Some(frame) => ages.push(frame.produced_at.elapsed().as_secs_f64() * 1e3),
@@ -669,7 +671,9 @@ mod tests {
         let mut more = 0usize;
         // Same as above: a hang guard with room for a busy machine, not a latency claim.
         let started_after_seek = Instant::now();
-        let deadline = Instant::now() + Duration::from_secs(20);
+        // Hängvakt, inte ett svarstidskrav: i en full svit startar 1 400 prov samtidigt och
+        // ffmpeg konkurrerar med dem om processorn — 20 s räckte inte då (mätt 2026-11-04).
+        let deadline = Instant::now() + Duration::from_secs(60);
         while more < 10 && Instant::now() < deadline {
             if play.latest().is_some() {
                 more += 1;
@@ -682,7 +686,12 @@ mod tests {
             "{more} frames after the seek in {:.3} s (deadline 20 s)",
             started_after_seek.elapsed().as_secs_f64()
         );
-        assert!(more >= 10, "playback stopped after the seek: {more} frames");
+        // **Frågan är om uppspelningen fortsätter, inte hur många bildrutor den hinner med.**
+        // Tio var ett tröskelvärde för genomströmning: i en full svit (1 400 prov parallellt)
+        // blir dekodern utsvulten och hann med 7 på sextio sekunder — medan samma prov ensamt
+        // klarar tio på under ett. Tre räcker för att skilja "fortsätter" från "stannade på en
+        // gammal bildruta", och det är vad provet påstår.
+        assert!(more >= 3, "playback stopped after the seek: {more} frames");
     }
 
     /// (e) Stopping kills the decoder: no child survives, and the player hands out nothing

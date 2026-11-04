@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   måste ljudet räddas.
 
 ### Added
+- **Separera stämmor direkt på ett spår (Alex 2026-11-04).** Högerklicka på ett ljudspår →
+  *Separera stämmor (4 spår)*: separationen kör i bakgrunden, framsteget ritas på spårets egen rad,
+  och när den är klar läggs varje stämma in som ett eget spår **där originalet stod** — originalet
+  tas bort, och ett Ctrl+Z tar tillbaka allt. Ett klipp i taget (ett spår med flera klipp avvisas
+  med besked), starttakten följer med, och statusraden säger vilken motor som användes — en
+  DSP-separation får inte se ut som en modellseparation.
 - **`sonix-mcp` — MCP-server så en AI kan styra appen.** En separat binär som talar MCP över stdio
   och skickar vidare till appens befintliga AI-yta (`/v1/tools`, `/v1/execute`, `/v1/last` på
   loopback med bearer-token). Inga nya verktyg, ingen ny validering, ingen ny state: de **15**

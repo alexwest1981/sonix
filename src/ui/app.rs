@@ -58,6 +58,7 @@ pub use project::*;
 
 pub(crate) mod ai_actions;
 mod import;
+mod stem_split;
 pub use import::*;
 
 mod waveform;
@@ -482,6 +483,8 @@ pub struct SonixApp {
     pub stem_separation_progress: std::sync::Arc<std::sync::Mutex<f32>>,
     pub stem_separation_result: std::sync::Arc<std::sync::Mutex<Option<Result<SeparationResult, String>>>>,
     pub stem_separation_active: bool,
+    /// Ett spår som separeras på sin egen rad (högerklick → *Separera stämmor*).
+    pub stem_split: Option<stem_split::StemSplitJob>,
     pub plugin_manager: PluginManager,
     /// Per-engine-stem-track plugin insert, persisted with the project so a
     /// reload can re-instantiate the plugin and restore its `clap.state` blob.
@@ -1291,6 +1294,7 @@ impl SonixApp {
             stem_separation_progress: std::sync::Arc::new(std::sync::Mutex::new(0.0)),
             stem_separation_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
             stem_separation_active: false,
+            stem_split: None,
             // **Med databasen från förra gången** (2026-09-15): undviker en full skanning vid
             // varje start, och berättar i statusraden om filen inte gick att läsa.
             plugin_manager: PluginManager::with_cached_database(),

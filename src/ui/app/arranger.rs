@@ -178,7 +178,7 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
 
         let DeferredActions {
             scrub_target_sec, drop_sample_action, track_delete_idx, track_duplicate_idx,
-            track_paste_idx,
+            track_paste_idx, stem_split_idx,
         } = deferred;
 
         // Floating drag badge tooltip that follows mouse cursor in foreground tooltip layer
@@ -219,6 +219,11 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
         if let Some(paste_idx) = track_paste_idx {
             self.selected_timeline_track = paste_idx;
             self.paste_region();
+        }
+        if let Some(idx) = stem_split_idx {
+            if let Err(e) = self.start_stem_split(idx) {
+                self.status_message = crate::tstatus!("⚠ {}", e);
+            }
         }
 
         // Apply scrub seeking if user interacted with ruler
@@ -833,6 +838,7 @@ impl SonixApp {
         let mut track_delete_idx = deferred.track_delete_idx.take();
         let mut track_duplicate_idx = deferred.track_duplicate_idx.take();
         let mut track_paste_idx = deferred.track_paste_idx.take();
+        let mut stem_split_idx = deferred.stem_split_idx.take();
         // 2.A FIXED LEFT TRACK HEADERS (Sticky / Frozen Column)
         // ================================================================
         ui.vertical(|ui| {
@@ -1001,6 +1007,29 @@ impl SonixApp {
                     title_col,
                 );
 
+                // **Framsteget ritas på spåret det gäller.** En separation tar tio till sextio
+                // sekunder; en statusrad i hörnet säger inte vilken rad som arbetar.
+                if let Some(p) = self.stem_split_progress(t_idx) {
+                    let bar = egui::Rect::from_min_max(
+                        Pos2::new(h_rect.min.x + 6.0, h_rect.max.y - 7.0),
+                        Pos2::new(h_rect.max.x - 6.0, h_rect.max.y - 2.0),
+                    );
+                    let palette = crate::ui::theme::palette();
+                    ui.painter().rect_filled(bar, 2.0, palette.panel_alt());
+                    let filled = egui::Rect::from_min_max(
+                        bar.min,
+                        Pos2::new(bar.min.x + bar.width() * p.clamp(0.0, 1.0), bar.max.y),
+                    );
+                    ui.painter().rect_filled(filled, 2.0, palette.cyan());
+                    ui.painter().text(
+                        Pos2::new(h_rect.min.x + 60.0, bar.min.y - 2.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        format!("{} {:.0} %", crate::i18n::t("stämmor"), p * 100.0),
+                        egui::FontId::proportional(Theme::FONT_XS),
+                        palette.text(),
+                    );
+                }
+
                 let ctrl_y_offset = 16.0;
 
                 // Live Input Meter for Mic/Vocal tracks or armed tracks
@@ -1109,6 +1138,25 @@ impl SonixApp {
                     ui.separator();
                     if ui.button(crate::i18n::t("📋 Duplicera spår (under detta spår)")).clicked() {
                         track_duplicate_idx = Some(t_idx);
+                        ui.close_menu();
+                    }
+                    // **Separera stämmor på plats** (Alex 2026-11-04): stämmorna läggs in där
+                    // spåret stod och originalet tas bort — ingen egen vy, ingen flytt.
+                    let has_audio = self.playlist_tracks[t_idx].pcm_audio.is_some();
+                    let busy = self.stem_split.is_some();
+                    if ui
+                        .add_enabled(
+                            has_audio && !busy,
+                            egui::Button::new(crate::i18n::t("🎚 Separera stämmor (4 spår)")),
+                        )
+                        .on_disabled_hover_text(if busy {
+                            crate::i18n::t("En separation pågår redan")
+                        } else {
+                            crate::i18n::t("Spåret har inget ljud att separera")
+                        })
+                        .clicked()
+                    {
+                        stem_split_idx = Some(t_idx);
                         ui.close_menu();
                     }
                     if ui.button(crate::i18n::t("⬆ Flytta spår upp")).clicked() {
@@ -1247,6 +1295,7 @@ impl SonixApp {
         deferred.track_delete_idx = track_delete_idx;
         deferred.track_duplicate_idx = track_duplicate_idx;
         deferred.track_paste_idx = track_paste_idx;
+        deferred.stem_split_idx = stem_split_idx;
     }
 
     /// Tidlinjens körfält — den vågrätt rullbara ytan: taktlinjalen, spårens körfält,
@@ -3454,6 +3503,9 @@ pub(crate) struct DeferredActions {
     pub(crate) track_delete_idx: Option<usize>,
     pub(crate) track_duplicate_idx: Option<usize>,
     pub(crate) track_paste_idx: Option<usize>,
+    /// Högerklick → *Separera stämmor* på ett spår. Deferrerad som de andra, så menyn inte
+    /// startar en tråd inifrån en pågående utritning.
+    pub(crate) stem_split_idx: Option<usize>,
 }
 
 impl SonixApp {
