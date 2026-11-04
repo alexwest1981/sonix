@@ -233,6 +233,11 @@ pub struct TimelineUndoSnapshot {
     /// valt när Ctrl+Z trycktes (EGM runda 5).
     pub selected_pattern: usize,
     pub export_loudness_idx: usize,
+    /// **Syntens inställningar.** `set_channel_instrument` byter tio globala fält — waveform,
+    /// ADSR, filter, sub, unison, glide, drive, övertoner — som inte ligger i något spår. Utan
+    /// dem i snapshotet gick instrumentbytet inte att ångra (EGM runda 5, fynd 4).
+    pub synth: crate::audio::command::PresetSettings,
+    pub current_preset: crate::audio::command::Preset,
     pub selected_timeline_track: usize,
     pub selected_audio_region: Option<(usize, usize)>,
     pub song_time: f32,
@@ -1101,6 +1106,8 @@ pub(crate) fn current_snapshot(&self, description: &str) -> TimelineUndoSnapshot
         sections: self.sections.clone(),
         selected_pattern: self.selected_pattern,
         export_loudness_idx: self.export_loudness_idx,
+        synth: self.current_settings(),
+        current_preset: self.current_preset,
         playlist_tracks: self.playlist_tracks.clone(),
         patterns: self.patterns.clone(),
         bus_volume: self.bus_volume,
@@ -1172,6 +1179,11 @@ fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
     self.selected_pattern = snapshot.selected_pattern;
     self.load_pattern_into_ui(self.selected_pattern);
     self.export_loudness_idx = snapshot.export_loudness_idx;
+    // Synten hörs utanför spåren: reglagen *och* motorn måste tillbaka, annars syns
+    // ångringen i panelen men ljudet byter inte tillbaka.
+    self.current_preset = snapshot.current_preset;
+    self.apply_settings(snapshot.synth);
+    self.push_settings_to_engine(snapshot.synth);
     self.bus_volume = snapshot.bus_volume;
     self.bus_muted = snapshot.bus_muted;
     self.bus_automation = snapshot.bus_automation.clone();

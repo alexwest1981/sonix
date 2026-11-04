@@ -1553,6 +1553,9 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             sections: Vec::new(),
             selected_pattern: 0,
             export_loudness_idx: 0,
+            // Synten prövas av sitt eget prov; här räcker ett känt läge.
+            synth: crate::audio::command::Preset::CleanPluck.settings(),
+            current_preset: crate::audio::command::Preset::CleanPluck,
             selected_timeline_track: 0,
             selected_audio_region: None,
             song_time: 0.0,

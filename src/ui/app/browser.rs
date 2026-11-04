@@ -828,19 +828,7 @@ impl SonixApp {
         self.apply_settings(settings);
         // Motorn får samma tal som reglagen: det finns inget `Preset` för Autogun, så varje
         // parameter skickas för sig.
-        let _ = self.engine.send_command(AudioCommand::SetWaveform(settings.waveform));
-        let _ = self.engine.send_command(AudioCommand::SetAdsr(settings.adsr));
-        let _ = self.engine.send_command(AudioCommand::SetFilter(settings.filter));
-        let _ = self.engine.send_command(AudioCommand::SetFilterEnv {
-            amount: settings.filter_env_amount,
-            adsr: self.filter_env,
-        });
-        let _ = self.engine.send_command(AudioCommand::SetSub { level: settings.sub });
-        let _ = self.engine.send_command(AudioCommand::SetUnison {
-            voices: settings.unison.clamp(1, 8),
-            detune_cents: settings.detune,
-        });
-        let _ = self.engine.send_command(AudioCommand::SetHarmonics { levels: settings.harmonics });
+        self.push_settings_to_engine(settings);
         self.status_message = crate::tstatus!("🎲 Autogun: {}", settings.waveform.name());
     }
 
@@ -862,7 +850,44 @@ impl SonixApp {
         self.status_message = crate::tstatus!("🖼 BeepMap: {} byte → 16 deltoner", bytes.len());
     }
 
-    fn apply_settings(&mut self, s: crate::audio::command::PresetSettings) {
+    /// **Syntens inställningar som de står nu.** Spegel av `apply_settings`, så ångringen kan
+    /// fånga och lägga tillbaka dem (`set_channel_instrument` ändrar tio globala fält som inte
+    /// ligger i något spår).
+    pub(crate) fn current_settings(&self) -> crate::audio::command::PresetSettings {
+        crate::audio::command::PresetSettings {
+            waveform: self.waveform,
+            adsr: self.adsr,
+            filter: self.filter,
+            filter_env_amount: self.filter_env_amount,
+            sub: self.sub_level,
+            unison: self.unison_voices,
+            detune: self.unison_detune_cents,
+            glide: self.glide_time,
+            drive: self.filter_drive,
+            harmonics: self.harmonics,
+        }
+    }
+
+    /// Skickar inställningarna till motorn, parameter för parameter. Samma lista som
+    /// `load_autogun` skickade innan den flyttade hit.
+    pub(crate) fn push_settings_to_engine(&mut self, s: crate::audio::command::PresetSettings) {
+        use crate::audio::command::AudioCommand;
+        let _ = self.engine.send_command(AudioCommand::SetWaveform(s.waveform));
+        let _ = self.engine.send_command(AudioCommand::SetAdsr(s.adsr));
+        let _ = self.engine.send_command(AudioCommand::SetFilter(s.filter));
+        let _ = self.engine.send_command(AudioCommand::SetFilterEnv {
+            amount: s.filter_env_amount,
+            adsr: self.filter_env,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetSub { level: s.sub });
+        let _ = self.engine.send_command(AudioCommand::SetUnison {
+            voices: s.unison.clamp(1, 8),
+            detune_cents: s.detune,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetHarmonics { levels: s.harmonics });
+    }
+
+    pub(crate) fn apply_settings(&mut self, s: crate::audio::command::PresetSettings) {
         self.waveform = s.waveform;
         self.adsr = s.adsr;
         self.filter = s.filter;

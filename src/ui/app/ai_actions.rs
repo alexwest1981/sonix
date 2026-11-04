@@ -542,9 +542,14 @@ impl SonixApp {
                 "spår {} ({name}): {hits} slag, median {median:.1} ms från rutnätet, värst {max:.1} ms",
                 track + 1
             )),
-            // Inga slag = ingen mätning. Ett tomt svar som ser ut som ett kvitto får en modell
-            // att påstå ett sväng den inte har mätt.
-            None => Err(format!("spår {} ({name}): inga slag hittades", track + 1)),
+            // **Inga slag är ett svar, inte ett fel.** `analyze_mix` säger samma sak om en tyst
+            // mix: mätningen gjorde sitt jobb. Text säger uttryckligen att inget mättes, så en
+            // modell kan inte påstå ett sväng — men klientens `isError` ska betyda "anropet
+            // gjorde inte det det bad om", inte "det fanns inget att mäta" (EGM runda 5, fynd 8).
+            None => Ok(format!(
+                "spår {} ({name}): inga slag hittades — inget att mäta",
+                track + 1
+            )),
         }
     }
 
@@ -657,6 +662,9 @@ impl SonixApp {
         let Some(plan) = self.ai_pending_plan.take() else {
             return "ingen plan att skapa".to_string();
         };
+        // **Sektionerna skrivs här, alltså hör steget hit.** `plan_sections` lagrar bara en
+        // väntande plan; knappen som lägger in den tog förut inget ångringssteg (EGM runda 5).
+        self.push_undo("Sektioner från plan");
         for (name, start_bar, bars) in ai_tools::sections_from_plan(&plan, 0) {
             self.sections.push(crate::ui::app::state::Section { name, start_bar, bars });
         }
