@@ -1072,6 +1072,7 @@ impl SonixApp {
         self.render_edison_modal_view(ctx);
         self.render_newtone_modal_view(ctx);
         self.render_newtime_modal_view(ctx);
+        self.render_source_tempo_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);

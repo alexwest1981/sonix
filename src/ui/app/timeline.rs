@@ -577,7 +577,7 @@ pub fn fit_selected_region_to_bars(&mut self, bars: f32) {
 
 /// Läser det valda klippets källjud till en egen stereobuffert — samma väg för Edison och
 /// Newtone. `None` betyder att klippet saknar ljud eller är för kort att arbeta med.
-fn selected_region_audio(&self) -> Option<RegionAudio> {
+pub(crate) fn selected_region_audio(&self) -> Option<RegionAudio> {
     let (t_idx, r_idx) = self.selected_audio_region?;
     let track = self.playlist_tracks.get(t_idx)?;
     let region = track.regions.get(r_idx)?.clone();
@@ -1300,29 +1300,66 @@ pub fn duplicate_track(&mut self, track_idx: usize) {
 }
 
 impl SonixApp {
-pub fn delete_track(&mut self, track_idx: usize) {
-    if track_idx >= self.playlist_tracks.len() || self.playlist_tracks.len() <= 1 {
-        return;
-    }
-    let orig_name = self.playlist_tracks[track_idx].name.clone();
-    if orig_name.to_lowercase().contains("mic") && self.playlist_tracks.iter().filter(|t| t.name.to_lowercase().contains("mic")).count() <= 1 {
-        self.status_message = crate::i18n::t("⚠️ Mikrofonspåret kan inte tas bort.").to_string();
-        return;
-    }
-    self.push_undo(&crate::tstatus!("Ta bort spår '{}'", orig_name));
-    self.playlist_tracks.remove(track_idx);
-    self.ensure_mic_track_exists();
+    /// **Tar bort spåret — eller hela markeringen, om spåret är en del av den.** Att markera fem
+    /// spår och välja *Ta bort spår* ska ta bort fem, inte bara det man råkade högerklicka på
+    /// (Alex 2026-11-04). Ett enda ångringssteg, och borttagningen sker bakifrån så indexen håller.
+    pub fn delete_track(&mut self, track_idx: usize) {
+        if track_idx >= self.playlist_tracks.len() {
+            return;
+        }
+        let len = self.playlist_tracks.len();
+        if len <= 1 {
+            return;
+        }
+        let is_mic: Vec<bool> = self
+            .playlist_tracks
+            .iter()
+            .map(|t| t.name.to_lowercase().contains("mic"))
+            .collect();
+        let targets = crate::ui::app::state::tracks_to_delete(
+            len,
+            &self.selected_tracks,
+            track_idx,
+            &is_mic,
+        );
+        if targets.is_empty() {
+            if is_mic.iter().any(|m| *m) && self.selected_tracks.contains(&track_idx) {
+                self.status_message =
+                    crate::i18n::t("⚠️ Mikrofonspåret kan inte tas bort.").to_string();
+            }
+            return;
+        }
 
-    let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
-    for i in 0..self.playlist_tracks.len() {
-        self.sync_track_stem_to_engine(i);
-        self.sync_track_audio_state(i);
-        self.sync_track_regions(i);
+        let names: Vec<String> = targets
+            .iter()
+            .map(|i| self.playlist_tracks[*i].name.clone())
+            .collect();
+        if names.len() == 1 {
+            self.push_undo(&crate::tstatus!("Ta bort spår '{}'", names[0]));
+        } else {
+            self.push_undo(&crate::tstatus!("Ta bort {} spår", names.len()));
+        }
+        for i in targets.iter().rev() {
+            self.playlist_tracks.remove(*i);
+        }
+        self.ensure_mic_track_exists();
+
+        let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
+        for i in 0..self.playlist_tracks.len() {
+            self.sync_track_stem_to_engine(i);
+            self.sync_track_audio_state(i);
+            self.sync_track_regions(i);
+        }
+        self.selected_tracks.clear();
+        self.selected_timeline_track =
+            self.selected_timeline_track.min(self.playlist_tracks.len().saturating_sub(1));
+        self.selected_audio_region = None;
+        self.status_message = if names.len() == 1 {
+            crate::tstatus!("🗑 Raderade spår '{}'.", names[0])
+        } else {
+            crate::tstatus!("🗑 Raderade {} spår.", names.len())
+        };
     }
-    self.selected_timeline_track = track_idx.min(self.playlist_tracks.len().saturating_sub(1));
-    self.selected_audio_region = None;
-    self.status_message = crate::tstatus!("🗑 Raderade spår '{}'.", orig_name);
-}
 }
 
 impl SonixApp {

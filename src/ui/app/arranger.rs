@@ -2945,6 +2945,21 @@ impl SonixApp {
                                     let is_rev = self.playlist_tracks[t_idx].regions[sel_r].is_reverse;
 
                                     ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(crate::ui::theme::palette().cyan()));
+                                    // **Källans tempo synligt.** Det är talet som avgör om klippet
+                                    // spelar i takt; utan det i ytan gick en mätning på halva
+                                    // tempot inte att upptäcka (Alex 2026-11-04).
+                                    let r_src = self.playlist_tracks[t_idx].regions[sel_r].source_bpm;
+                                    if r_src > 0.0 {
+                                        ui.label(
+                                            egui::RichText::new(crate::tstatus!(
+                                                "källa {:.2} BPM → projekt {:.1} BPM",
+                                                r_src,
+                                                self.bpm
+                                            ))
+                                            .size(crate::ui::theme::Theme::FONT_XS)
+                                            .color(crate::ui::theme::palette().text_muted()),
+                                        );
+                                    }
                                     ui.separator();
 
                                     if ui.button(crate::i18n::t("📋 Kopiera sample (Ctrl+C)")).clicked() {
@@ -3023,6 +3038,34 @@ impl SonixApp {
                                     }
                                     if ui.button(crate::i18n::t("🎵 Mät tempot i klippet")).on_hover_text(crate::i18n::t("Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt.")).clicked() {
                                         self.measure_selected_region_bpm();
+                                        ui.close_menu();
+                                    }
+                                    if ui
+                                        .button(format!("{}…", crate::i18n::t("🎯 Källans tempo")))
+                                        .on_hover_text(crate::i18n::t(
+                                            "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet.",
+                                        ))
+                                        .clicked()
+                                    {
+                                        let old = self.playlist_tracks[t_idx].regions[sel_r].source_bpm;
+                                        let shares = self
+                                            .playlist_tracks
+                                            .iter()
+                                            .flat_map(|t| t.regions.iter())
+                                            .filter(|r| old > 0.0 && (r.source_bpm - old).abs() < 0.01)
+                                            .count();
+                                        self.source_tempo = Some(
+                                            crate::ui::source_tempo_modal::SourceTempoState {
+                                                track: t_idx,
+                                                region: sel_r,
+                                                name: r_name.clone(),
+                                                old,
+                                                value: if old > 0.0 { old } else { self.bpm },
+                                                project_bpm: self.bpm,
+                                                shares,
+                                                apply_all: shares > 1,
+                                            },
+                                        );
                                         ui.close_menu();
                                     }
                                     if ui.button(crate::i18n::t("✂ Redigera i Edison (kopia)")).on_hover_text(crate::i18n::t("Välj ett urval i vågformen och vänd, normalisera, tona, tysta eller beskär. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig.")).clicked() {

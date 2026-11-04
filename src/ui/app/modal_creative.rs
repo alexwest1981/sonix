@@ -84,6 +84,96 @@ impl SonixApp {
 }
 
 impl SonixApp {
+    /// **Källans tempo**: ritar rutan och tar emot dess beslut. Ingenting ändras förrän
+    /// *Använd* trycks, och då via `apply_source_tempo`.
+    pub(crate) fn render_source_tempo_modal_view(&mut self, ctx: &egui::Context) {
+        let Some(mut st) = self.source_tempo.take() else {
+            return;
+        };
+        match crate::ui::source_tempo_modal::render_source_tempo_modal(ctx, &mut st) {
+            crate::ui::source_tempo_modal::SourceTempoAction::None => {
+                self.source_tempo = Some(st);
+            }
+            crate::ui::source_tempo_modal::SourceTempoAction::Close => {}
+            crate::ui::source_tempo_modal::SourceTempoAction::Measure => {
+                // Klippet är det valda — menyn som öppnade rutan kräver det.
+                self.selected_audio_region = Some((st.track, st.region));
+                if let Some((_, left, right, sample_rate, _)) = self.selected_region_audio() {
+                    let bpm = crate::audio::stem_separator::estimate_bpm(
+                        &left,
+                        &right,
+                        sample_rate as f32,
+                    );
+                    if bpm > 0.0 {
+                        st.value = bpm;
+                    } else {
+                        self.status_message = crate::tstatus!(
+                            "🎵 Hittade ingen takt i '{}' — klippet står still vid tempobyte",
+                            st.name
+                        );
+                    }
+                }
+                self.source_tempo = Some(st);
+            }
+            crate::ui::source_tempo_modal::SourceTempoAction::Apply => {
+                self.source_tempo = Some(st);
+                self.apply_source_tempo();
+            }
+        }
+    }
+}
+
+impl SonixApp {
+    /// **Sätter källans tempo och följer med i längd.** Talet styr sträckningen (Fas 8.10), och
+    /// klippets längd i takter skalas med `nytt/gammalt`: annars kapas låten när ett tempo som
+    /// mätts en oktav fel rättas — halva filen låg utanför tidslinjen.
+    pub(crate) fn apply_source_tempo(&mut self) {
+        let Some(st) = self.source_tempo.take() else {
+            return;
+        };
+        let value = st.value.clamp(20.0, 300.0);
+        if st.old > 0.0 && (value - st.old).abs() < 0.001 {
+            return;
+        }
+        self.push_undo("Källans tempo");
+        let mut touched: Vec<usize> = Vec::new();
+        let mut count = 0usize;
+        for ti in 0..self.playlist_tracks.len() {
+            let mut changed = false;
+            for ri in 0..self.playlist_tracks[ti].regions.len() {
+                let r = &mut self.playlist_tracks[ti].regions[ri];
+                let hit = (ti == st.track && ri == st.region)
+                    || (st.apply_all && st.old > 0.0 && (r.source_bpm - st.old).abs() < 0.01);
+                if !hit {
+                    continue;
+                }
+                // Längden följer tempot: samma källstycke ska ligga kvar på tidslinjen.
+                // shortening: ratiot är oklippt här, `stretch_ratio_for` har golv och tak.
+                if r.source_bpm > 0.0 && value > 0.0 {
+                    r.length_bars *= value / r.source_bpm;
+                }
+                r.source_bpm = value;
+                changed = true;
+                count += 1;
+            }
+            if changed {
+                touched.push(ti);
+            }
+        }
+        for ti in touched {
+            self.sync_track_regions(ti);
+        }
+        let played = if value > 0.0 {
+            self.bpm / value
+        } else {
+            1.0
+        };
+        self.status_message =
+            crate::tstatus!("🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×", value, count, played);
+    }
+}
+
+impl SonixApp {
     /// **Newtone**: ritar tonhöjdseditorn och tar emot dess beslut. Analysen gjordes när
     /// rutan öppnades; ingenting skrivs förrän *Skapa spår* trycks.
     pub(crate) fn render_newtone_modal_view(&mut self, ctx: &egui::Context) {

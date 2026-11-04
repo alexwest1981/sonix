@@ -373,6 +373,20 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Ta bort {} spår" => "Remove {} tracks",
+        "🗑 Raderade {} spår." => "🗑 Removed {} tracks.",
+
+        "🎯 Källans tempo" => "🎯 Source tempo",
+        "källa {:.2} BPM → projekt {:.1} BPM" => "source {:.2} BPM → project {:.1} BPM",
+        "källtempo okänt — inget sträcks" => "source tempo unknown — nothing is stretched",
+        "projekt {:.1} BPM → spelas {:.2}×" => "project {:.1} BPM → plays {:.2}×",
+        "projekt {:.1} BPM → spelas som det är" => "project {:.1} BPM → plays as it is",
+        "Gäller alla {} klipp med samma källtempo" => "Applies to all {} clips with the same source tempo",
+        "Använd projektets tempo" => "Use the project tempo",
+        "Använd" => "Apply",
+        "🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×" => "🎯 Source tempo {:.2} BPM on {} clips — plays {:.2}×",
+        "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet." => "Type the file's tempo instead of trusting the measurement. ÷2/×2 fixes the usual octave error (a backbeat is measured at half the tempo). Do it before separating stems — they inherit the number.",
+
         "Spåret har {} klipp — separera ett klipp i taget" => "The track has {} clips — separate one clip at a time",
         "⚠️ '{}' är en binär groove-fil — 103 av Abletons 219 mallar är det. Välj en XML-mall" => "⚠️ '{}' is a binary groove file — 103 of Ableton's 219 templates are. Pick an XML template",
         "En separation pågår redan — vänta tills den är klar" => "A separation is already running — wait until it finishes",
@@ -3058,6 +3072,20 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Ta bort {} spår" => "Fjern {} spor",
+        "🗑 Raderade {} spår." => "🗑 Fjernede {} spor.",
+
+        "🎯 Källans tempo" => "🎯 Kildetempo",
+        "källa {:.2} BPM → projekt {:.1} BPM" => "kilde {:.2} BPM → projekt {:.1} BPM",
+        "källtempo okänt — inget sträcks" => "kildetempo ukendt — intet strækkes",
+        "projekt {:.1} BPM → spelas {:.2}×" => "projekt {:.1} BPM → afspilles {:.2}×",
+        "projekt {:.1} BPM → spelas som det är" => "projekt {:.1} BPM → afspilles som det er",
+        "Gäller alla {} klipp med samma källtempo" => "Gælder alle {} klip med samme kildetempo",
+        "Använd projektets tempo" => "Brug projektets tempo",
+        "Använd" => "Anvend",
+        "🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×" => "🎯 Kildetempo {:.2} BPM på {} klip — afspilles {:.2}×",
+        "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet." => "Skriv filens tempo i stedet for at stole på målingen. ÷2/×2 retter den sædvanlige oktavfejl (et backbeat måles til det halve tempo). Gør det før du separerer stemmer — de arver tallet.",
+
         "Spåret har {} klipp — separera ett klipp i taget" => "Sporet har {} klip — separer ét klip ad gangen",
         "En separation pågår redan — vänta tills den är klar" => "En separation kører allerede — vent til den er færdig",
         "Spåret finns inte" => "Sporet findes ikke",
@@ -5701,6 +5729,20 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Ta bort {} spår" => "Fjern {} spor",
+        "🗑 Raderade {} spår." => "🗑 Fjernet {} spor.",
+
+        "🎯 Källans tempo" => "🎯 Kildetempo",
+        "källa {:.2} BPM → projekt {:.1} BPM" => "kilde {:.2} BPM → prosjekt {:.1} BPM",
+        "källtempo okänt — inget sträcks" => "kildetempo ukjent — ingenting strekkes",
+        "projekt {:.1} BPM → spelas {:.2}×" => "prosjekt {:.1} BPM → spilles {:.2}×",
+        "projekt {:.1} BPM → spelas som det är" => "prosjekt {:.1} BPM → spilles som det er",
+        "Gäller alla {} klipp med samma källtempo" => "Gjelder alle {} klipp med samme kildetempo",
+        "Använd projektets tempo" => "Bruk prosjektets tempo",
+        "Använd" => "Bruk",
+        "🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×" => "🎯 Kildetempo {:.2} BPM på {} klipp — spilles {:.2}×",
+        "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet." => "Skriv filens tempo i stedet for å stole på målingen. ÷2/×2 retter den vanlige oktavfeilen (et backbeat måles til halve tempoet). Gjør det før du separerer stemmer — de arver tallet.",
+
         "Spåret har {} klipp — separera ett klipp i taget" => "Sporet har {} klipp — separer ett klipp om gangen",
         "En separation pågår redan — vänta tills den är klar" => "En separasjon kjører allerede — vent til den er ferdig",
         "Spåret finns inte" => "Sporet finnes ikke",
@@ -8344,6 +8386,20 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Ta bort {} spår" => "{} Spuren löschen",
+        "🗑 Raderade {} spår." => "🗑 {} Spuren gelöscht.",
+
+        "🎯 Källans tempo" => "🎯 Quelltempo",
+        "källa {:.2} BPM → projekt {:.1} BPM" => "Quelle {:.2} BPM → Projekt {:.1} BPM",
+        "källtempo okänt — inget sträcks" => "Quelltempo unbekannt — es wird nichts gestreckt",
+        "projekt {:.1} BPM → spelas {:.2}×" => "Projekt {:.1} BPM → spielt {:.2}×",
+        "projekt {:.1} BPM → spelas som det är" => "Projekt {:.1} BPM → spielt wie es ist",
+        "Gäller alla {} klipp med samma källtempo" => "Gilt für alle {} Clips mit demselben Quelltempo",
+        "Använd projektets tempo" => "Projekttempo verwenden",
+        "Använd" => "Übernehmen",
+        "🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×" => "🎯 Quelltempo {:.2} BPM auf {} Clips — spielt {:.2}×",
+        "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet." => "Trage das Tempo der Datei ein, statt der Messung zu vertrauen. ÷2/×2 korrigiert den üblichen Oktavfehler (ein Backbeat wird mit halbem Tempo gemessen). Mach es, bevor du Stimmen trennst — sie erben die Zahl.",
+
         "Spåret har {} klipp — separera ett klipp i taget" => "Die Spur hat {} Clips — trenne einen Clip nach dem anderen",
         "En separation pågår redan — vänta tills den är klar" => "Eine Trennung läuft bereits — warte, bis sie fertig ist",
         "Spåret finns inte" => "Die Spur existiert nicht",
@@ -10987,6 +11043,20 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Ta bort {} spår" => "Eliminar {} pistas",
+        "🗑 Raderade {} spår." => "🗑 Eliminadas {} pistas.",
+
+        "🎯 Källans tempo" => "🎯 Tempo de origen",
+        "källa {:.2} BPM → projekt {:.1} BPM" => "origen {:.2} BPM → proyecto {:.1} BPM",
+        "källtempo okänt — inget sträcks" => "tempo de origen desconocido — no se estira nada",
+        "projekt {:.1} BPM → spelas {:.2}×" => "proyecto {:.1} BPM → suena {:.2}×",
+        "projekt {:.1} BPM → spelas som det är" => "proyecto {:.1} BPM → suena tal cual",
+        "Gäller alla {} klipp med samma källtempo" => "Se aplica a los {} clips con el mismo tempo de origen",
+        "Använd projektets tempo" => "Usar el tempo del proyecto",
+        "Använd" => "Aplicar",
+        "🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×" => "🎯 Tempo de origen {:.2} BPM en {} clips — suena {:.2}×",
+        "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet." => "Escribe el tempo del archivo en vez de fiarte de la medición. ÷2/×2 corrige el error de octava habitual (un contratiempo se mide a la mitad del tempo). Hazlo antes de separar las pistas — heredan el número.",
+
         "Spåret har {} klipp — separera ett klipp i taget" => "La pista tiene {} clips — separa un clip a la vez",
         "En separation pågår redan — vänta tills den är klar" => "Ya hay una separación en curso — espera a que termine",
         "Spåret finns inte" => "La pista no existe",
@@ -13630,6 +13700,20 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Ta bort {} spår" => "Supprimer {} pistes",
+        "🗑 Raderade {} spår." => "🗑 {} pistes supprimées.",
+
+        "🎯 Källans tempo" => "🎯 Tempo source",
+        "källa {:.2} BPM → projekt {:.1} BPM" => "source {:.2} BPM → projet {:.1} BPM",
+        "källtempo okänt — inget sträcks" => "tempo source inconnu — rien n'est étiré",
+        "projekt {:.1} BPM → spelas {:.2}×" => "projet {:.1} BPM → joue {:.2}×",
+        "projekt {:.1} BPM → spelas som det är" => "projet {:.1} BPM → joue tel quel",
+        "Gäller alla {} klipp med samma källtempo" => "S'applique aux {} clips ayant le même tempo source",
+        "Använd projektets tempo" => "Utiliser le tempo du projet",
+        "Använd" => "Appliquer",
+        "🎯 Källtempo {:.2} BPM på {} klipp — spelas {:.2}×" => "🎯 Tempo source {:.2} BPM sur {} clips — joue {:.2}×",
+        "Skriv filens tempo i stället för att lita på mätningen. ÷2/×2 rättar det vanliga oktavfelet (ett bakslag mäts som halva tempot). Gör det innan du separerar stämmor — de ärver talet." => "Saisis le tempo du fichier au lieu de faire confiance à la mesure. ÷2/×2 corrige l'erreur d'octave habituelle (un contretemps est mesuré à la moitié du tempo). Fais-le avant de séparer les pistes — elles héritent du nombre.",
+
         "Spåret har {} klipp — separera ett klipp i taget" => "La piste a {} clips — sépare un clip à la fois",
         "En separation pågår redan — vänta tills den är klar" => "Une séparation est déjà en cours — attends qu'elle se termine",
         "Spåret finns inte" => "La piste n'existe pas",

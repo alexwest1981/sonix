@@ -843,6 +843,8 @@ pub struct SonixApp {
     pub newtone: Option<crate::ui::newtone_modal::NewtoneState>,
     /// Newtime: klippets tidseditor. `None` = rutan är stängd.
     pub newtime: Option<crate::ui::newtime_modal::NewtimeState>,
+    /// **Källans tempo** — rutan som rättar tempomätningen innan man sträcker eller separerar.
+    pub source_tempo: Option<crate::ui::source_tempo_modal::SourceTempoState>,
     pub fx_rack_state: FxRackState,
     pub show_song_structure_modal: bool,
     /// Scenrutnätet på skärmen (Sprint 1, punkt 5): modellen, kvantiseringen och rutan.
@@ -1542,6 +1544,7 @@ impl SonixApp {
             edison: None,
             newtone: None,
             newtime: None,
+            source_tempo: None,
             fx_rack_state: FxRackState::default(),
             show_song_structure_modal: false,
             launcher: crate::audio::launcher::Launcher::new(1, 4, 4),
