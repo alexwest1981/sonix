@@ -37,6 +37,11 @@ static PROC_START: OnceLock<Instant> = OnceLock::new();
 struct Phase {
     last_done: &'static str,
     last_ms: f32,
+    /// **Fönstrets läge.** Utan det går en riktig blockering inte att skilja från en
+    /// vilande app: present väntar på en bildrute-callback som compositorn inte skickar när
+    /// fönstret inte är aktivt, och då finns ingen bildruta på flera sekunder utan att något
+    /// är trasigt (mätt: 6 av 9 "hängningar" i en session såg ut precis så).
+    focused: bool,
     frame_done: Instant,
     reported: bool,
 }
@@ -84,8 +89,15 @@ fn phase() -> &'static Mutex<Phase> {
             let idle = p.frame_done.elapsed().as_secs_f32();
             if hang_due(idle, p.reported) {
                 p.reported = true;
-                let (last, ms) = (p.last_done, p.last_ms);
+                // **Läget med i raden**, så nästa läsning inte behöver gissa: en tystnad i ett
+                // oaktivt fönster är normalt, en tystnad i det aktiva är en blockering.
+                let (last, ms, focused) = (p.last_done, p.last_ms, p.focused);
                 drop(p);
+                let state = if focused {
+                    ""
+                } else {
+                    " · fönstret var inte aktivt"
+                };
                 let where_hint = match last {
                     "skarmdump" => "efter update — alltså i fönstrets present",
                     "bildruta-start" => "före första fasen i bildrutan (tema) — eller precis efter att en bildruta börjat",
@@ -93,7 +105,7 @@ fn phase() -> &'static Mutex<Phase> {
                     _ => "fasen efter den",
                 };
                 log_line(&format!(
-                    "[{:7.2}s] HÄNG: ingen bildruta på {idle:.1} s · senast klar: '{last}' ({ms:.1} ms) · blockeringen sitter i {where_hint}\n",
+                    "[{:7.2}s] HÄNG: ingen bildruta på {idle:.1} s · senast klar: '{last}' ({ms:.1} ms) · blockeringen sitter i {where_hint}{state}\n",
                     since_start_secs()
                 ));
             }
@@ -101,6 +113,7 @@ fn phase() -> &'static Mutex<Phase> {
         Mutex::new(Phase {
             last_done: "",
             last_ms: 0.0,
+            focused: true,
             frame_done: Instant::now(),
             reported: false,
         })
@@ -115,6 +128,13 @@ impl SonixApp {
         let mut p = phase().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         p.last_done = "bildruta-start";
         p.last_ms = 0.0;
+    }
+
+    /// **Fönstrets läge, en gång per bildruta.** Hängproben behöver det för att kunna säga om
+    /// en tystnad var en blockering eller bara ett fönster som inte ritas.
+    pub(crate) fn perf_note_viewport(&mut self, focused: bool) {
+        let mut p = phase().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        p.focused = focused;
     }
 
     /// Märker en fas: `let t = Instant::now(); … ; self.perf_mark("fas", t);`

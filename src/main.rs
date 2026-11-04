@@ -1479,13 +1479,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let options = eframe::NativeOptions {
         viewport,
+        // **Utan vsync.** Med vsync väntar `present` på att compositorn skickar nästa
+        // bildrute-callback, och på Wayland kommer den inte när ytan är dold, minimerad eller
+        // flyttad mellan skärmar — då står UI-tråden still och fönstret blir "not responding".
+        // Hängproben mätte sex sådana blockeringar i en session (Alex 2026-11-04).
+        //
+        // Farten styrs i stället av appens egna `request_repaint_after` (16/33/200 ms), så
+        // detta kostar ingen CPU. Priset är att X11 kan riva bilden (tearing); Wayland kan
+        // inte det — compositorn synkar ändå.
+        vsync: false,
         ..Default::default()
     };
 
     eframe::run_native(
         "Sonix DAW",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            // **Typsnitten sätts här, inte i `update`.** Ikonerna behöver ett monokromt
+            // emoji-typsnitt, och `set_fonts` bygger om glyfatlasen — den får bara köras en gång.
+            crate::ui::fonts::install(cc);
             let mut app = SonixApp::new(engine);
             app.web = web;
             // Fas 6.0: berätta en gång om något flyttades eller läses från en
