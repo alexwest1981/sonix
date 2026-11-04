@@ -8,11 +8,15 @@ pub struct Theme;
 #[allow(dead_code)]
 impl Theme {
     // **Större typografi** (GUI-planen, punkt 3): 9 px etiketter var FL-tätt, inte Ableton.
+    // **Fyra steg med synlig skillnad.** Mätt i designrunda 2: 92 % av alla storleksanrop låg
+    // på FONT_S (587) och FONT_XS (177), och steget S → M var 1,16 — alltså syntes ingen
+    // hierarki alls. De två dominanta storlekarna står still (layouten är byggd kring dem);
+    // stegen ovanför dem vidgas, så rubriker och paneltitlar äntligen skiljer sig från brödtext.
     pub const FONT_XS: f32 = 10.5;
     pub const FONT_S: f32 = 12.5;
-    pub const FONT_M: f32 = 14.5;
-    pub const FONT_L: f32 = 18.0;
-    pub const FONT_XL: f32 = 24.0;
+    pub const FONT_M: f32 = 16.0;
+    pub const FONT_L: f32 = 19.0;
+    pub const FONT_XL: f32 = 26.0;
 
     /// Samma färg med annan genomskinlighet — så att en ton inte behöver skrivas av för hand.
     pub fn alpha(c: Color32, a: u8) -> Color32 {

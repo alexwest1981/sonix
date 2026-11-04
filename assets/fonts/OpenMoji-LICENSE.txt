@@ -1,0 +1,22 @@
+OpenMoji — assets/fonts/OpenMoji-black-glyf.ttf
+===============================================
+
+Copyright: OpenMoji project (https://openmoji.org), Hochschule für Gestaltung
+Schwäbisch Gmünd (HfG). Emoji designs by the OpenMoji contributors and, where
+applicable, based on Unicode character designs.
+
+License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+         https://creativecommons.org/licenses/by-sa/4.0/
+
+Source:  https://github.com/hfg-gmuend/openmoji
+
+Why it is bundled
+-----------------
+Sonix draws ~200 icons as emoji characters. Systems normally ship only
+"Noto Color Emoji", which is a CBDT bitmap font that egui's rasterizer
+(ab_glyph) cannot use — every icon then renders as an empty box. OpenMoji-black
+is a plain monochrome TrueType font and covers every icon the app uses.
+
+Modifications: none. The file is redistributed unmodified under CC BY-SA 4.0;
+the font is embedded as-is in the binary. If you reuse the font outside Sonix,
+keep this attribution and the same license.

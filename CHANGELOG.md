@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Emoji-typsnitt i binären** (OpenMoji-black, CC BY-SA 4.0). Repot hade inga
+  `FontDefinitions` alls: 134 tecken i källan saknas i egui:s inbyggda ikonfont — 83 av dem
+  ritas nu som riktiga ikoner i stället för tomma rutor.
+
+### Fixed
+- **Autosaven serialiserade och skrev på UI-tråden.** `project_data` + `to_string_pretty` +
+  läsning av projektfilen + skrivning gjordes i `tick`-fasen; hängproben mätte ett block på
+  **100,7 s** där. Nu kopieras bara datat på UI-tråden, och serialisering, jämförelse och
+  skrivning sker i en egen tråd. Regeln "identiskt läge skrivs inte om" bor i
+  `autosave::plan` och prövas.
+- **`vsync: false`.** Med vsync väntar fönstrets `present` på en bildrute-callback som
+  compositorn inte skickar när ytan är dold eller flyttad — sex av nio "hängningar" satt
+  precis där. Farten styrs av appens egna `request_repaint_after`.
+- **Hängproben skiljer nu tystnad från blockering.** Fönstrets fokus skrivs i varje
+  HÄNG-rad, så en vilande app inte längre läses som en trasig.
+- **`set_channel_instrument` går att ångra.** Syntens tio globala fält (waveform, ADSR, filter,
+  sub, unison, glide, drive, övertoner) ligger i ångringspunkten, och motorn får dem tillbaka.
+  Schemat kräver inte längre `channel`, som utföraren aldrig läste.
+- **Sektionerna från en plan tar ett ångringssteg** när de läggs in.
+- **`groove_report` svarar `Ok` även när den inte hittar några slag** — samma regel som
+  `analyze_mix`: ett lyckat anrop som inte hittade något är inte ett fel.
+
+### Changed
+- **F1-manualen går att läsa.** Fönstret mättes 1919 × ~210 px: längsta raden satte bredden
+  och `available_height()` i en horisontell rad var noll, så allt kollapsade till en rad.
+  Nu fast storlek (780 × 520), brytning i hela panelen och synlig kapitelmeny.
+- **Registermätaren:** 180 × 30 px i stället för 128 × 22, och etikettens höjd kommer ur
+  typsnittet (den var 8 px för 10,5 px text, alltså klippt).
+- **Typskalans övre steg vidgade** (M 14,5 → 16, L 18 → 19, XL 24 → 26). Steget S → M var
+  1,16, så rubriker och brödtext såg lika stora ut; de två dominanta storlekarna står still.
+
+### Added
 - **🎯 Källans tempo** — en ruta (högerklick på ett klipp) där filens tempo skrivs in för hand,
   med `÷2` och `×2` för det vanliga oktavfelet. Talet avgör hur mycket ljudet sträcks, och
   klippets längd skalas med `nytt/gammalt` så att **samma källstycke ligger kvar** på tidslinjen —

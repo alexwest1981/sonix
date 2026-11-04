@@ -39,8 +39,15 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
         .open(&mut open)
         .collapsible(false)
         .resizable(true)
-        .default_size(Vec2::new(920.0, 620.0))
-        .min_size(Vec2::new(760.0, 480.0))
+        // **Mätta mått, inte gissade.** Manualen ritades 1919 × ~210 px: den längsta raden
+        // satte bredden (ingen rad bröt) och `available_height()` i en horisontell rad var noll,
+        // så allt kollapsade till en rad (designrunda 2). Bredden sätts nu på kolumnerna
+        // *innan* texten läggs in, och höjden är ett tal i stället för en fråga till layouten.
+        // **Fast storlek, inte `default_size`.** Egui mäter ett `default_size`-fönster ur
+        // innehållet, och innehållet är ~200 etiketter som inte bröt — alltså blev fönstret
+        // 1919 px brett och kollapsade på höjden (mätt i skärmdump, designrunda 2 och igen
+        // 2026-11-04). Med `fixed_size` får kolumnerna en bredd att bryta mot.
+        .fixed_size(Vec2::new(780.0, 520.0))
         .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
             // Top Header with quick search and close
@@ -58,11 +65,15 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
             ui.separator();
 
             // 2-Column Layout: Left Chapters Sidebar + Right Scrollable Documentation
-            ui.horizontal(|ui| {
+            ui.horizontal_top(|ui| {
+                ui.set_min_height(380.0);
+                // Brytningen gäller **hela** panelen: 200 etiketter skulle annars var och en
+                // mäta sin egen rad och tvinga fönstret att växa i sidled.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 // Left Chapter Navigation Sidebar
                 ui.group(|ui| {
-                    ui.set_width(230.0);
-                    ui.set_height(ui.available_height());
+                    ui.set_min_size(Vec2::new(220.0, 380.0));
+                    ui.set_max_height(380.0);
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("KAPITEL & AVSNITT:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                         ui.add_space(2.0);
@@ -92,7 +103,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                                 let bg = if is_sel { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().header() };
                                 let fg = if is_sel { Color32::BLACK } else { crate::ui::theme::palette().text() };
 
-                                if ui.add_sized(Vec2::new(215.0, 26.0), egui::Button::new(egui::RichText::new(crate::i18n::t(title)).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
+                                if ui.add_sized(Vec2::new(205.0, 26.0), egui::Button::new(egui::RichText::new(crate::i18n::t(title)).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                                     self.help_manual_active_tab = ch_idx;
                                 }
                                 ui.add_space(2.0);
@@ -101,10 +112,12 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                     });
                 });
 
-                // Right Main Content Scroll Area
+                // Right Main Content Scroll Area. **Bredden först**: egui bryter en `label`
+                // bara när den har en maxbredd att bryta mot.
                 ui.group(|ui| {
-                    ui.set_width(ui.available_width());
-                    ui.set_height(ui.available_height());
+                    ui.set_min_size(Vec2::new(460.0, 380.0));
+                    ui.set_max_width(460.0);
+                    ui.set_max_height(380.0);
 
                     egui::ScrollArea::vertical()
                         .id_salt("manual_content_scroll")

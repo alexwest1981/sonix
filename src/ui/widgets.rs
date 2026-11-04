@@ -703,7 +703,10 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
         return;
     }
 
-    let label_h = 8.0;
+    // **Etiketten behöver sin egen höjd.** Fältet var 8 px men texten är `FONT_XS` (10,5 px),
+    // alltså klipptes namnen nertill och sex etiketter i 128 px gav 21 px per fack — "L-MID"
+    // är 26 px (designrunda 2). Höjden kommer nu ur typsnittet.
+    let label_h = Theme::FONT_XS + 2.0;
     let area = Rect::from_min_max(
         rect.min + Vec2::new(2.0, 2.0),
         Pos2::new(rect.max.x - 2.0, rect.max.y - 2.0 - label_h),

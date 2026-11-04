@@ -94,6 +94,20 @@ pub fn stretch_pieces(
 /// **Ett enda tempo ger exakt ett stycke** med samma faktor som i dag. Det är avsiktligt: för
 /// projekt utan tempobyten ska ingenting ändras, och då är den här vägen bit-identisk med den
 /// gamla.
+/// **Klippets längd när källans tempo rättas.** Samma källstycke ska ligga kvar på
+/// tidslinjen: längden i takter skalas med `nytt/gammalt`. Utan det kapades låten när ett
+/// tempo som mätts en oktav fel rättades — halva filen låg utanför tidslinjen
+/// (Alex 2026-11-04: 67,42 mätt, 134,84 sant, 46,7 takter skulle bli 93,4).
+///
+/// Ren funktion: tidslinjen, ljudet och exporten ska få samma svar, och regeln går att pröva
+/// utan fönster.
+pub fn bars_after_source_tempo_change(bars: f32, old_bpm: f32, new_bpm: f32) -> f32 {
+    if old_bpm <= 0.0 || new_bpm <= 0.0 {
+        return bars;
+    }
+    bars * (new_bpm / old_bpm)
+}
+
 pub fn stretch_ratio_for(source_bpm: f32, project_bpm: f32) -> f32 {
     if source_bpm <= 0.0 || project_bpm <= 0.0 {
         return 1.0;
@@ -1358,6 +1372,31 @@ mod declick_tests {
         assert!(declick(0.0) > 0.0, "en hård kant är precis det som klickar");
         // En längre fade som användaren själv ställt in rörs inte.
         assert_eq!(declick(0.25), 0.25);
+    }
+}
+
+#[cfg(test)]
+mod source_tempo_tests {
+    use super::*;
+
+    /// **Alex egen fil, hans egna siffror.** En Suno-låt mättes till 67,42 BPM (halva tempot)
+    /// och sträcktes till projektets 120. Rättas källan till 134,84 ska klippet täcka 93,4
+    /// takter i stället för 46,7 — samma ljud, rätt antal takter. Utan skalningen kapades
+    /// låten på mitten när tempot rättades.
+    #[test]
+    fn correcting_a_half_tempo_keeps_the_same_audio_on_the_timeline() {
+        let bars = 46.7_f32;
+        let fixed = bars_after_source_tempo_change(bars, 67.42, 134.84);
+        assert!((fixed - 93.4).abs() < 0.2, "blev {fixed} takter, väntade 93,4");
+
+        // Halva tempot tillbaka ger halva antalet takter, och varvet runt ger samma tal.
+        let halved = bars_after_source_tempo_change(bars, 134.84, 67.42);
+        assert!((halved - 23.35).abs() < 0.1, "blev {halved}");
+        assert!((bars_after_source_tempo_change(halved, 67.42, 134.84) - bars).abs() < 0.01);
+
+        // Okänt tempo rör ingenting.
+        assert_eq!(bars_after_source_tempo_change(bars, 0.0, 120.0), bars);
+        assert_eq!(bars_after_source_tempo_change(bars, 120.0, 0.0), bars);
     }
 }
 

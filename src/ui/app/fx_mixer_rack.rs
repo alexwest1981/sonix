@@ -307,7 +307,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                                 }
                             }
                             if ui
-                                .add(egui::Button::new(egui::RichText::new("＋").size(Theme::FONT_S).color(pal.text_muted())).min_size(egui::vec2(22.0, 16.0)))
+                                .add(egui::Button::new(egui::RichText::new("+").size(Theme::FONT_S).color(pal.text_muted())).min_size(egui::vec2(22.0, 16.0)))
                                 .on_hover_text(crate::i18n::t("Lägg en punkt här, på faderns nuvarande nivå"))
                                 .clicked()
                             {

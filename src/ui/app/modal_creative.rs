@@ -148,10 +148,10 @@ impl SonixApp {
                     continue;
                 }
                 // Längden följer tempot: samma källstycke ska ligga kvar på tidslinjen.
-                // shortening: ratiot är oklippt här, `stretch_ratio_for` har golv och tak.
-                if r.source_bpm > 0.0 && value > 0.0 {
-                    r.length_bars *= value / r.source_bpm;
-                }
+                // Regeln (och skälet) bor i `stretch::bars_after_source_tempo_change`.
+                let old_bpm = r.source_bpm;
+                r.length_bars =
+                    crate::ui::app::stretch::bars_after_source_tempo_change(r.length_bars, old_bpm, value);
                 r.source_bpm = value;
                 changed = true;
                 count += 1;
