@@ -1545,6 +1545,8 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             bpm: 120.0,
             tempo_points: Vec::new(),
             non_track: non_track_base(),
+            channels: Vec::new(),
+            sections: Vec::new(),
             selected_timeline_track: 0,
             selected_audio_region: None,
             song_time: 0.0,

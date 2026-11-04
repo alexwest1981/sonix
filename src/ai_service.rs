@@ -24,7 +24,10 @@ pub const DEFAULT_PORT: u16 = 4827;
 pub type Queue = Arc<Mutex<Vec<Call>>>;
 
 /// Kvitton från körningen, i den ordning appen utförde anropen. `GET /v1/last` tömmer listan.
-pub type Results = Arc<Mutex<Vec<String>>>;
+///
+/// **Varje kvitto bär sin dom** (`ok`), inte bara sin text: MCP-klienten sätter `isError` ur den,
+/// och en modell som får ett avvisat anrop som "lyckat" fortsätter som om det gällt.
+pub type Results = Arc<Mutex<Vec<crate::ui::app::ai_actions::AiReceipt>>>;
 
 /// Läser eller skapar token. Filen får 0600 — den är en nyckel till appens AI-yta.
 pub fn load_or_create_token() -> std::io::Result<String> {
@@ -154,7 +157,7 @@ fn handle(mut stream: TcpStream, token: &str, queue: &Queue, results: &Results) 
         }
         ("GET", "/v1/last") => {
             // Ett asynkront `execute` är värdelöst utan svar: plugin får kvittona här.
-            let lines: Vec<String> = results
+            let lines = results
                 .lock()
                 .map(|mut r| std::mem::take(&mut *r))
                 .unwrap_or_default();
@@ -221,7 +224,10 @@ mod tests {
     fn execute_queues_valid_calls_and_rejects_broken_json() {
         let queue: Queue = Arc::new(Mutex::new(Vec::new()));
         let results: Results = Default::default();
-        results.lock().unwrap().push("tempo 128 BPM".to_string());
+        results.lock().unwrap().push(crate::ui::app::ai_actions::AiReceipt {
+            ok: true,
+            text: "tempo 128 BPM".to_string(),
+        });
         let port = start(0, "tok".to_string(), queue.clone(), results.clone()).unwrap();
 
         let body = r#"{"calls":[{"tool":"set_tempo","args":{"bpm":128}}]}"#;
@@ -248,6 +254,8 @@ mod tests {
             "GET /v1/last HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok\r\nConnection: close\r\n\r\n",
         );
         assert!(last.contains("tempo 128 BPM"), "{last}");
+        // **Domen följer med kvittot**: klienten sätter `isError` ur `ok`, inte ur texten.
+        assert!(last.contains("\"ok\":true"), "flaggan saknas i /v1/last: {last}");
         assert!(results.lock().unwrap().is_empty(), "listan ska tömmas när den läses");
     }
 }

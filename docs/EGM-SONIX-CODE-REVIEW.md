@@ -11,8 +11,8 @@ källan av mig efter granskningen — de som inte höll är märkta *motbevisat*
 | # | Fynd | Allvar | Status |
 |---|---|---|---|
 | 1 | `write_script` gav en extern modell godtycklig filskrivning (`save_midi`) | 🔴 | **Åtgärdat** — `script::run_isolated` registrerar inte filfunktionerna; AI-vägen använder den. Prov: `a_model_script_cannot_touch_the_filesystem` |
-| 2 | AI-anrop går inte att ångra, och CHANGELOG påstod att de gjorde det | 🔴 | **Öppet** — kvitterat: `push_undo` finns 0 gånger i `ai_actions.rs` |
-| 3 | `isError` alltid false; ett avvisat anrop ser ut som ett lyckat | 🔴 | **Delvis** — timeout och 401 ger nu `isError: true`; *valideringsfel* (`ai_execute_call` → `String`) gör det fortfarande inte |
+| 2 | AI-anrop går inte att ångra, och CHANGELOG påstod att de gjorde det | 🔴 | **Åtgärdat** — snapshotet bär nu `channels` och `sections`, och dräneringen lägger **ett** steg per POST (bara om något gick igenom). Inte provtäckt: inget prov kan bygga en `SonixApp` |
+| 3 | `isError` alltid false; ett avvisat anrop ser ut som ett lyckat | 🔴 | **Åtgärdat** — `ai_execute_call` → `AiReceipt { ok, text }` via en `Result`-väg genom alla 15 verktyg; `/v1/last` bär flaggan. Mätt mot körande app: `bpm 400` → `isError: true` |
 | 4 | Kvittot var inte knutet till anropet — ett tidsutgånget svar kunde bli nästa anrops svar | 🔴 | **Åtgärdat** — `/v1/last` töms före POST. Prov: `a_stale_receipt_is_not_returned_as_the_answer` |
 | 5 | Vakthunden mätte *fokus*, inte synlighet — en DAW i bakgrunden slutade återhämta ljudet | 🔴 | **Åtgärdat** — hoppar bara när fönstret är i bakgrunden **och** transporten står still |
 | 6 | Vakthunden ger upp **utan att säga det** | 🔴 | **Åtgärdat** — verifierat att beskedet var oåtkomligt (en egen konstant kan aldrig enas med trappans fyra steg); nu sätts det där trappan tar slut, en gång (`audio_gave_up`) |
@@ -34,12 +34,12 @@ källan av mig efter granskningen — de som inte höll är märkta *motbevisat*
 
 ## Öppna fynd, i den ordning de bör tas
 
-1. **Ångring för AI-anrop** (2): `TimelineUndoSnapshot` saknar `channels` och `sections`, så
-   `load_drum_kit`, `plan_sections` och `chop_channel` kan inte återställas alls. Ett snapshot per
-   POST (hela `Vec<Call>`), etiketterat `"AI: <första verktyget> +N"`.
-2. **`isError` ur en flagga** (3): `ai_execute_call` → `(bool, String)`, och `/v1/last` bär `{text, ok}`.
-   Textheuristik i adaptern är sämre än en flagga.
-3. **PAN/BREDD i projektfilen** (8): `stereo_width` in i payloaden med `serde(default)`, båda in i
+1. **PAN/BREDD i projektfilen** (8): `stereo_width` in i payloaden med `serde(default)`, båda in i
    `NonTrackSound`, och `SetMasterPanWidth` sänds vid inläsning.
-5. **Läsrutt för en extern klient** (12): ett read-only `project_state` som återanvänder
+2. **Läsrutt för en extern klient** (12): ett read-only `project_state` som återanvänder
    `ai_channel_context()` — och ta bort `pattern` ur schemat i stället för att låtsas.
+3. **`chop_channel` synkar inte till patternmodellen** (13): stegen sätts men
+   `sync_active_pattern_from_ui()` anropas aldrig, så slicarna försvinner vid patternbyte.
+4. **MCP-testets täckning** (14): attrappen kontrollerar inte `Authorization`, och
+   `{"tools": […]}`-grenen körs aldrig.
+5. **Dokumentens siffror** (15).

@@ -56,7 +56,7 @@ pub use state::*;
 mod project;
 pub use project::*;
 
-mod ai_actions;
+pub(crate) mod ai_actions;
 mod import;
 pub use import::*;
 
@@ -1645,12 +1645,35 @@ impl eframe::App for SonixApp {
             .lock()
             .map(|mut q| std::mem::take(&mut *q))
             .unwrap_or_default();
-        for call in queued {
-            let line = self.ai_execute_call(&call);
-            if let Ok(mut r) = self.ai_service_results.lock() {
-                r.push(line.clone());
+        if !queued.is_empty() {
+            // **Ett ångringssteg per POST**, inte per anrop: en modell som skriver åtta takter
+            // skickar oftast `write_pattern` + `write_notes`, och ett Ctrl+Z ska ta tillbaka
+            // båda. Snapshotet tas före körningen (det är då läget är ångringsbart) men läggs
+            // bara på historiken om något faktiskt gick igenom — annars blev ett avvisat anrop
+            // ett tomt steg i historiken.
+            let label = if queued.len() > 1 {
+                format!("AI: {} +{}", queued[0].tool, queued.len() - 1)
+            } else {
+                format!("AI: {}", queued[0].tool)
+            };
+            let snapshot = self.current_snapshot(&label);
+            let mut any_ok = false;
+            for call in queued {
+                let receipt = self.ai_execute_call(&call);
+                if receipt.ok {
+                    any_ok = true;
+                }
+                self.status_message = crate::tstatus!("🛰 {}", receipt.text);
+                if let Ok(mut r) = self.ai_service_results.lock() {
+                    r.push(receipt);
+                }
             }
-            self.status_message = crate::tstatus!("🛰 {}", line);
+            if any_ok {
+                self.push_undo_snapshot(snapshot);
+            }
+            // shortcut: AI-vägens ångring är inte provtäckt — inget prov kan bygga en `SonixApp`
+            // (motorn krävs), så den är verifierad av kompilatorn och av att `current_snapshot`
+            // bär `channels`/`sections`. Täck den när appen går att bygga i ett prov.
         }
 
         // Temaregistret hämtas i bakgrunden; här plockas svaret upp.

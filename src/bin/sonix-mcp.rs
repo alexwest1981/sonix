@@ -163,9 +163,26 @@ fn call(ep: &Endpoint, name: &str, arguments: serde_json::Value) -> Result<Strin
         if s != 200 {
             continue;
         }
-        if let Ok(lines) = serde_json::from_str::<Vec<String>>(&b) {
+        if let Ok(lines) = serde_json::from_str::<Vec<serde_json::Value>>(&b) {
             if let Some(first) = lines.into_iter().next() {
-                return Ok(first);
+                // **Appens dom, inte adapterns gissning.** En äldre app svarar med bara texten;
+                // då finns ingen flagga och anropet räknas som lyckat, som förut.
+                return match first {
+                    serde_json::Value::Object(o) => {
+                        let text = o
+                            .get("text")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if o.get("ok").and_then(|v| v.as_bool()).unwrap_or(true) {
+                            Ok(text)
+                        } else {
+                            Err(text)
+                        }
+                    }
+                    serde_json::Value::String(text) => Ok(text),
+                    other => Ok(other.to_string()),
+                };
             }
         }
     }
@@ -271,7 +288,7 @@ mod tests {
     use std::net::TcpListener;
 
     /// En attrapp för appens AI-yta: samma tre rutter, inget UI.
-    fn mock_app(stale_receipt: Option<&'static str>) -> (u16, std::thread::JoinHandle<()>) {
+    fn mock_app(stale_receipt: Option<&'static str>, failure: bool) -> (u16, std::thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("addr").port();
         let handle = std::thread::spawn(move || {
@@ -291,8 +308,10 @@ mod tests {
                     r#"[{"type":"function","function":{"name":"set_tempo","description":"Sätter tempo.","parameters":{"type":"object","properties":{"bpm":{"type":"number"}},"required":["bpm"]}}}]"#.to_string()
                 } else if req.starts_with("POST /v1/execute") {
                     "{\"queued\":1}".to_string()
+                } else if failure {
+                    "[{\"ok\": false, \"text\": \"tempo 400 ligger utanför 40–240\"}]".to_string()
                 } else {
-                    "[\"🎚 tempo 128 BPM\"]".to_string()
+                    "[{\"ok\": true, \"text\": \"🎚 tempo 128 BPM\"}]".to_string()
                 };
                 let status = if req.starts_with("POST /v1/execute") {
                     "202 Accepted"
@@ -342,7 +361,7 @@ mod tests {
     /// Hela vägen mot en attrapp: lista verktyg, kör ett, och få appens kvitto tillbaka.
     #[test]
     fn tools_list_and_call_go_through_the_apps_http_surface() {
-        let (port, _server) = mock_app(None);
+        let (port, _server) = mock_app(None, false);
         let ep = endpoint(port);
 
         let list = handle(&serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}), &ep)
@@ -368,7 +387,7 @@ mod tests {
     /// `/v1/last` har ingen korrelations-id, så adaptern tömmer den före anropet.
     #[test]
     fn a_stale_receipt_is_not_returned_as_the_answer() {
-        let (port, _server) = mock_app(Some("gammalt kvitto från förra anropet"));
+        let (port, _server) = mock_app(Some("gammalt kvitto från förra anropet"), false);
         let ep = endpoint(port);
         let answer = handle(
             &serde_json::json!({
@@ -381,5 +400,25 @@ mod tests {
         let text = answer["result"]["content"][0]["text"].as_str().unwrap_or("");
         assert!(!text.contains("gammalt"), "gammalt kvitto läckte: {text}");
         assert!(text.contains("tempo"), "fel kvitto: {text}");
+    }
+
+    /// **Ett avvisat anrop ska bli `isError: true`.** Appen sätter `ok:false` på kvittot, och
+    /// adaptern får inte göra det till en framgång — annars rapporterar modellen ett tempo som
+    /// aldrig sattes.
+    #[test]
+    fn a_rejected_call_becomes_is_error() {
+        let (port, _server) = mock_app(None, true);
+        let ep = endpoint(port);
+        let answer = handle(
+            &serde_json::json!({
+                "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                "params": {"name": "set_tempo", "arguments": {"bpm": 400}}
+            }),
+            &ep,
+        )
+        .expect("svar");
+        assert_eq!(answer["result"]["isError"], true, "{answer}");
+        let text = answer["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("utanför"), "appen ska förklara: {text}");
     }
 }

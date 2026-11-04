@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Ett avvisat AI-anrop rapporterades som lyckat.** `ai_execute_call` returnerade bara en sträng, så
+  adaptern satte `isError: false` på allt som kom fram — en modell som bad om 400 BPM fick ett
+  kvitto och fortsatte som om det gällt. Nu bär varje kvitto sin dom (`AiReceipt { ok, text }`),
+  satt av utföraren: alla femton verktyg går genom en `Result`-väg, inte genom en textheuristik.
+  Mätt mot körande app: `bpm 400` → `isError: true`.
+- **AI-arbete gick inte att ångra.** `TimelineUndoSnapshot` saknade `channels` och `sections`, så
+  `load_drum_kit`, `write_pattern` och `plan_sections` stod kvar efter Ctrl+Z — eller försvann som
+  bieffekt när användaren ångrade något annat. Nu bär snapshotet båda, och ett POST lägger **ett**
+  steg (bara om något faktiskt gick igenom).
 - **En extern modell kunde skriva vilken fil som helst via `write_script`.** `load_midi`/`save_midi`
   fanns i Rhai-motorn och AI-vägen grindade dem inte — över MCP skedde det utan en människa vid
   tangentbordet. Nu registreras de bara för den betrodda skriptrutan (`script::run_isolated` för
@@ -33,8 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`sonix-mcp` — MCP-server så en AI kan styra appen.** En separat binär som talar MCP över stdio
   och skickar vidare till appens befintliga AI-yta (`/v1/tools`, `/v1/execute`, `/v1/last` på
   loopback med bearer-token). Inga nya verktyg, ingen ny validering, ingen ny state: de **15**
-  verktygen går genom samma validering som den inbyggda assistenten. **Ångringssteget finns inte
-  än** — `ai_execute_call` rör inte historiken (se `docs/EGM-SONIX-CODE-REVIEW.md`, fynd 2).
+  verktygen går genom samma validering och **samma enda ångringssteg** som den inbyggda
+  assistenten: ett snapshot per POST, etiketterat `AI: <verktyget> +N`.
   Fungerar med varje klient som kan starta ett kommando. Mätt hela vägen mot den körande appen:
   `initialize` → `serverInfo sonix`, `tools/list` → 15 verktyg, `tools/call set_tempo {bpm:128}`
   → kvittot "tempo 128 BPM".

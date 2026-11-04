@@ -10,6 +10,14 @@ use crate::audio::ai_tools;
 
 use super::{SharedResult, SonixApp, SunoMeta, SunoTask};
 
+/// **Ett kvitto med sin dom.** `ok` sätts av utföraren, aldrig av texten: en MCP-klient avgör på
+/// `isError`, och ett avvisat anrop som ser lyckat ut är värre än inget kvitto alls.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AiReceipt {
+    pub ok: bool,
+    pub text: String,
+}
+
 impl SonixApp {
     /// Skickar användarens text till modellen i bakgrunden. `None` = ingen förfrågan pågår.
     pub fn ai_send_prompt(&mut self) {
@@ -105,7 +113,7 @@ impl SonixApp {
 
         let mut done = Vec::new();
         for call in calls {
-            done.push(self.ai_execute_call(&call));
+            done.push(self.ai_execute_call(&call).text);
         }
         let line = format!("🤖 {}", done.join(" · "));
         self.ai_assistant.last_reply = line.clone();
@@ -114,17 +122,27 @@ impl SonixApp {
 
     /// Utför **ett** verktygsanrop. Delas av assistentvyn och HTTP-tjänsten, så en regel bara
     /// finns på ett ställe.
-    pub fn ai_execute_call(&mut self, call: &crate::audio::ai_tools::Call) -> String {
+    pub fn ai_execute_call(&mut self, call: &crate::audio::ai_tools::Call) -> AiReceipt {
+        match self.ai_run_call(call) {
+            Ok(text) => AiReceipt { ok: true, text },
+            Err(text) => AiReceipt { ok: false, text },
+        }
+    }
+
+    /// Själva utförandet. `Ok` = anropet gjorde det det bad om, `Err` = det gjorde inget (och
+    /// texten säger varför). Flaggan får aldrig gissas ur texten: en MCP-klient avgör på
+    /// `isError`, och ett avvisat anrop som ser lyckat ut är värre än ingen kvitto alls.
+    fn ai_run_call(&mut self, call: &crate::audio::ai_tools::Call) -> Result<String, String> {
         match call.tool.as_str() {
             "set_tempo" => {
                 let bpm = call.args.get("bpm").and_then(|v| v.as_f64());
                 match bpm {
                     Some(bpm) if (40.0..=240.0).contains(&bpm) => {
                         self.set_project_bpm(bpm as f32);
-                        format!("tempo {bpm:.0} BPM")
+                        Ok(format!("tempo {bpm:.0} BPM"))
                     }
-                    Some(bpm) => format!("tempo {bpm:.0} ligger utanför 40–240"),
-                    None => "tempo saknade bpm".to_string(),
+                    Some(bpm) => Err(format!("tempo {bpm:.0} ligger utanför 40–240")),
+                    None => Err("tempo saknade bpm".to_string()),
                 }
             }
             "write_drum_pattern" => {
@@ -136,8 +154,8 @@ impl SonixApp {
                     .to_string();
                 let bars = call.args.get("bars").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
                 match self.ai_write_drum_pattern(&style, bars) {
-                    Ok(line) => line,
-                    Err(e) => format!("trumkomp: {e}"),
+                    Ok(line) => Ok(line),
+                    Err(e) => Err(format!("trumkomp: {e}")),
                 }
             }
             "mute_track" => {
@@ -146,9 +164,9 @@ impl SonixApp {
                 match self.playlist_tracks.get_mut(idx) {
                     Some(track) => {
                         track.muted = muted;
-                        format!("spår {} {}", idx + 1, if muted { "tystat" } else { "påslaget" })
+                        Ok(format!("spår {} {}", idx + 1, if muted { "tystat" } else { "påslaget" }))
                     }
-                    None => format!("spår {} finns inte", idx + 1),
+                    None => Err(format!("spår {} finns inte", idx + 1)),
                 }
             }
             "plan_sections" => match ai_tools::parse_section_plan(&call.args) {
@@ -159,17 +177,31 @@ impl SonixApp {
                         .collect::<Vec<_>>()
                         .join(", ");
                     self.ai_pending_plan = Some(plan);
-                    format!("plan att bekräfta: {summary}")
+                    Ok(format!("plan att bekräfta: {summary}"))
                 }
-                Err(e) => format!("plan: {e}"),
+                Err(e) => Err(format!("plan: {e}")),
             },
             "write_pattern" => match crate::audio::ai_tools::parse_lanes(&call.args) {
                 Ok(lanes) => {
-                    let done: Vec<String> = lanes.iter().map(|lane| self.ai_write_lane(lane)).collect();
+                    let mut done = Vec::new();
+                    let mut failed = Vec::new();
+                    for lane in &lanes {
+                        match self.ai_write_lane(lane) {
+                            Ok(line) => done.push(line),
+                            Err(e) => failed.push(e),
+                        }
+                    }
                     self.sync_active_pattern_from_ui();
-                    done.join(" · ")
+                    done.extend(failed.iter().cloned());
+                    // **En stämma som avvisades gör hela anropet avvisat.** Annars rapporteras ett
+                    // halvt komp som lyckat (EGM runda 4).
+                    if failed.is_empty() {
+                        Ok(done.join(" · "))
+                    } else {
+                        Err(done.join(" · "))
+                    }
                 }
-                Err(e) => format!("mönster: {e}"),
+                Err(e) => Err(format!("mönster: {e}")),
             },
             "write_notes" => self.ai_write_notes(&call.args),
             "load_drum_kit" => {
@@ -199,20 +231,20 @@ impl SonixApp {
                 let lufs = call.args.get("lufs").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
                 self.ai_master_to_target(lufs as f32)
             }
-            "set_key" => "tonart: inte byggt än".to_string(),
+            "set_key" => Err("tonart: inte byggt än".to_string()),
             "set_channel_instrument" => {
                 let wanted = call.args.get("instrument").and_then(|v| v.as_str()).unwrap_or("");
                 self.ai_set_instrument(wanted)
             }
-            other => format!("okänt verktyg '{other}'"),
+            other => Err(format!("okänt verktyg '{other}'")),
         }
     }
 
     /// Byter syntljud. Namnet måste matcha ett av `SYNTH_PRESETS` (skiftlägesoberoende, delsträng
     /// räcker) — AI:n får inte hitta på ett ljud som inte finns.
-    fn ai_set_instrument(&mut self, wanted: &str) -> String {
+    fn ai_set_instrument(&mut self, wanted: &str) -> Result<String, String> {
         if wanted.trim().is_empty() {
-            return "instrument: inget namn angavs".to_string();
+            return Err("instrument: inget namn angavs".to_string());
         }
         let Some((name, preset)) = crate::audio::command::find_preset(wanted) else {
             let names = crate::audio::command::SYNTH_PRESETS
@@ -220,23 +252,23 @@ impl SonixApp {
                 .map(|(n, _)| *n)
                 .collect::<Vec<_>>()
                 .join(", ");
-            return format!("instrument: '{wanted}' finns inte (kända: {names})");
+            return Err(format!("instrument: '{wanted}' finns inte (kända: {names})"));
         };
         self.current_preset = preset;
         self.apply_preset_settings(preset);
         let _ = self.engine.send_command(crate::audio::command::AudioCommand::LoadPreset(preset));
-        format!("instrument: {name}")
+        Ok(format!("instrument: {name}"))
     }
 
 /// Skriver **en** stämma på en kanal. Kanalen måste finnas och vara tom: ett komp som redan
     /// spelar skrivs aldrig över av ett verktygsanrop, det sägs tillbaka i statusraden.
-    fn ai_write_lane(&mut self, lane: &crate::audio::ai_tools::Lane) -> String {
+    fn ai_write_lane(&mut self, lane: &crate::audio::ai_tools::Lane) -> Result<String, String> {
         let hits = lane.steps.iter().filter(|s| **s).count();
         let Some(ch) = self.channels.get_mut(lane.channel) else {
-            return format!("kanal {} finns inte", lane.channel + 1);
+            return Err(format!("kanal {} finns inte", lane.channel + 1));
         };
         if ch.steps.iter().any(|s| *s) {
-            return format!("kanal {} ({}) har redan steg — töm den först", lane.channel + 1, ch.name);
+            return Err(format!("kanal {} ({}) har redan steg — töm den först", lane.channel + 1, ch.name));
         }
         let name = ch.name.clone();
         ch.steps = lane.steps;
@@ -247,7 +279,7 @@ impl SonixApp {
                 }
             }
         }
-        format!("{name}: {hits} slag")
+        Ok(format!("{name}: {hits} slag"))
     }
 
     /// Skriver melodi/bas på en kanal — som **en klippa på tidslinjen**, inte i rutnätet.
@@ -255,22 +287,22 @@ impl SonixApp {
     /// Klippan bär sina egna noter (position, anslag och längd), så den går att dra utan att
     /// noterna rör sig och att spara som `.mid`. Rutnätet hade en not per steg och varken
     /// anslag eller notlängd — därför fastnade AI:ns melodi i mönstret.
-    fn ai_write_notes(&mut self, args: &serde_json::Value) -> String {
+    fn ai_write_notes(&mut self, args: &serde_json::Value) -> Result<String, String> {
         let notes = match crate::audio::ai_tools::parse_notes(args) {
             Ok(notes) => notes,
-            Err(e) => return format!("noter: {e}"),
+            Err(e) => return Err(format!("noter: {e}")),
         };
         let channel = args.get("channel").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
         let Some(ch) = self.channels.get(channel) else {
-            return format!("kanal {} finns inte", channel + 1);
+            return Err(format!("kanal {} finns inte", channel + 1));
         };
         let name = ch.name.clone();
         if ch.steps.iter().any(|s| *s) {
-            return format!("kanal {} ({}) har redan steg — töm den först", channel + 1, name);
+            return Err(format!("kanal {} ({}) har redan steg — töm den först", channel + 1, name));
         }
         let pattern = self.selected_pattern;
         let Some(last_track) = self.playlist_tracks.len().checked_sub(1) else {
-            return "noter: det finns inget spår att lägga klippan på".to_string();
+            return Err("noter: det finns inget spår att lägga klippan på".to_string());
         };
         let track_idx = self.selected_timeline_track.min(last_track);
         if self.playlist_tracks[track_idx]
@@ -278,11 +310,11 @@ impl SonixApp {
             .iter()
             .any(|c| c.pattern == pattern && c.lane == channel && !c.notes.is_empty())
         {
-            return format!(
+            return Err(format!(
                 "kanal {} ({}) har redan en klippa med noter — ta bort den först",
                 channel + 1,
                 name
-            );
+            ));
         }
         // Längden täcker noterna **och** patternet: en klippa på en takt klipper av noter
         // AI:n skrev på steg 20, och en kortare än patternet spelar inte dess sista takter.
@@ -325,22 +357,22 @@ impl SonixApp {
                 name: name.clone(),
                 notes: clip_notes,
             });
-        crate::tstatus!(
+        Ok(crate::tstatus!(
             "📎 '{}': {} noter i en klippa på takt {} ({} takter)",
             name,
             notes.len(),
             start_bar + 1.0,
             bars
-        )
+        ))
     }
 
     /// **Väljer ljud ur användarens eget bibliotek.** Varje trumkanal får det sample som bäst
     /// matchar dess roll och den stil användaren bad om; en fil som inte går att läsa lämnas
     /// kanalen orörd (samma regel som i kanalracket), och då provas ingen annan fil — den hade
     /// gett ett annat ljud än det som står i statusraden.
-    fn ai_load_drum_kit(&mut self, genre: &str) -> String {
+    fn ai_load_drum_kit(&mut self, genre: &str) -> Result<String, String> {
         if self.sample_library.is_empty() {
-            return "kit: biblioteket är tomt (skanna en mapp först)".to_string();
+            return Err("kit: biblioteket är tomt (skanna en mapp först)".to_string());
         }
         let items: Vec<(String, String)> = self
             .sample_library
@@ -366,9 +398,9 @@ impl SonixApp {
             }
         }
         if placed.is_empty() {
-            format!("kit: inga trumljud i biblioteket matchade '{genre}'")
+            Err(format!("kit: inga trumljud i biblioteket matchade '{genre}'"))
         } else {
-            format!("kit ({genre}): {}", placed.join(", "))
+            Ok(format!("kit ({genre}): {}", placed.join(", ")))
         }
     }
 
@@ -450,10 +482,10 @@ impl SonixApp {
 
     /// **Mixgranskningen.** LUFS och topp per spår, ur `audio::loudness`, plus sektionerna.
     /// Modellen får siffrorna som text — den får inte hitta på dem.
-    fn ai_analyze_mix(&mut self) -> String {
+    fn ai_analyze_mix(&mut self) -> Result<String, String> {
         let count = self.playlist_tracks.len().min(16);
         if count == 0 {
-            return "mätning: inga spår i arrangemanget".to_string();
+            return Err("mätning: inga spår i arrangemanget".to_string());
         }
         let mut lines = Vec::new();
         for i in 0..count {
@@ -477,25 +509,25 @@ impl SonixApp {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        format!(
+        Ok(format!(
             "mätt {} spår (första {} takterna). {} Sektioner: {}",
             count,
             Self::AI_MEASURE_BARS,
             lines.join(" | "),
             sections
-        )
+        ))
     }
 
     /// **Ligger spåret på rutnätet?** Slagen hittas i den renderade spårmixen, avvikelsen räknas
     /// mot sextondelar. Skriver inget — det här är ett mått, inte ett ingrepp.
-    fn ai_groove_report(&mut self, track: usize) -> String {
+    fn ai_groove_report(&mut self, track: usize) -> Result<String, String> {
         let Some(t) = self.playlist_tracks.get(track) else {
-            return format!("spår {} finns inte", track + 1);
+            return Err(format!("spår {} finns inte", track + 1));
         };
         let name = t.name.clone();
         let buf = match self.ai_render_track(track) {
             Ok(b) => b,
-            Err(e) => return format!("mätning: {e}"),
+            Err(e) => return Err(format!("mätning: {e}")),
         };
         // Vänsterkanalen räcker: slagen sitter på samma ställe i båda.
         let mono: Vec<f32> = buf.chunks(2).map(|f| f[0]).collect();
@@ -506,26 +538,28 @@ impl SonixApp {
         );
         let step_secs = 60.0 / self.bpm.max(20.0) / 4.0;
         match crate::audio::ai_tools::groove_drift_ms(&onsets, 48_000, step_secs) {
-            Some((median, max, hits)) => format!(
+            Some((median, max, hits)) => Ok(format!(
                 "spår {} ({name}): {hits} slag, median {median:.1} ms från rutnätet, värst {max:.1} ms",
                 track + 1
-            ),
-            None => format!("spår {} ({name}): inga slag hittades", track + 1),
+            )),
+            // Inga slag = ingen mätning. Ett tomt svar som ser ut som ett kvitto får en modell
+            // att påstå ett sväng den inte har mätt.
+            None => Err(format!("spår {} ({name}): inga slag hittades", track + 1)),
         }
     }
 
     /// **Chop.** Slagen letas i kanalens eget ljud (samma detektor som mixerpanelens knappar) och
     /// en slice per sextondel läggs i ett **tomt** mönster — ett komp som redan spelar rörs inte.
-    fn ai_chop_channel(&mut self, channel: usize, spectral: bool) -> String {
+    fn ai_chop_channel(&mut self, channel: usize, spectral: bool) -> Result<String, String> {
         let Some(ch) = self.channels.get_mut(channel) else {
-            return format!("kanal {} finns inte", channel + 1);
+            return Err(format!("kanal {} finns inte", channel + 1));
         };
         let name = ch.name.clone();
         if ch.steps.iter().any(|s| *s) {
-            return format!("kanal {} ({name}) har redan steg — töm den först", channel + 1);
+            return Err(format!("kanal {} ({name}) har redan steg — töm den först", channel + 1));
         }
         let Some((left, _right, sr)) = ch.pcm_audio.as_ref() else {
-            return format!("kanal {} ({name}): kanalens ljud går inte att läsa — inga slag kan hittas", channel + 1);
+            return Err(format!("kanal {} ({name}): kanalens ljud går inte att läsa — inga slag kan hittas", channel + 1));
         };
         let Some((slices, _count)) = crate::audio::onset::detect_slice_map(
             left,
@@ -533,7 +567,7 @@ impl SonixApp {
             spectral,
             &crate::audio::onset::OnsetParams::default(),
         ) else {
-            return format!("kanal {} ({name}): inga slag hittades", channel + 1);
+            return Err(format!("kanal {} ({name}): inga slag hittades", channel + 1));
         };
         ch.sample_start = slices[0].0;
         ch.sample_end = slices[0].1;
@@ -544,37 +578,37 @@ impl SonixApp {
         for step in ch.steps.iter_mut().take(placed) {
             *step = true;
         }
-        format!(
+        Ok(format!(
             "kanal {} ({name}): {} slicar hittade, {placed} i mönstret",
             channel + 1,
             slices.len()
-        )
+        ))
     }
 
     /// Byler namn på ett spår. Tomt namn avvisas — ett namnlöst spår går inte att prata om.
-    fn ai_rename_track(&mut self, track: usize, name: &str) -> String {
+    fn ai_rename_track(&mut self, track: usize, name: &str) -> Result<String, String> {
         let clean: String = name.trim().chars().take(40).collect();
         if clean.is_empty() {
-            return "namn: inget namn angavs".to_string();
+            return Err("namn: inget namn angavs".to_string());
         }
         let Some(t) = self.playlist_tracks.get_mut(track) else {
-            return format!("spår {} finns inte", track + 1);
+            return Err(format!("spår {} finns inte", track + 1));
         };
         let old = std::mem::replace(&mut t.name, clean.clone());
-        format!("spår {}: {old} → {clean}", track + 1)
+        Ok(format!("spår {}: {old} → {clean}", track + 1))
     }
 
     /// **Rhai från modellen.** Skriptet kör mot en **kopia** av den valda tagningen — samma regel
     /// som skriptrutan i pianorullen — så ett fel halvvägs lämnar tagningen orörd. Men det kör
     /// **utan filsystemet**: `load_midi`/`save_midi` finns inte i modellens motor, för ett skript
     /// som kommer utifrån (HTTP/MCP) ska inte kunna skriva över vilken fil som helst.
-    fn ai_write_script(&mut self, source: &str) -> String {
+    fn ai_write_script(&mut self, source: &str) -> Result<String, String> {
         if let Err(e) = crate::audio::ai_tools::script_is_allowed(source) {
-            return format!("skript: {e}");
+            return Err(format!("skript: {e}"));
         }
         let pattern = self.selected_pattern;
         let Some(pat) = self.patterns.get_mut(pattern) else {
-            return "skript: ingen tagning vald".to_string();
+            return Err("skript: ingen tagning vald".to_string());
         };
         let mut copy = pat.take.clone();
         match crate::audio::script::run_isolated(source, &mut copy) {
@@ -582,27 +616,27 @@ impl SonixApp {
                 let notes = copy.notes.len();
                 pat.take = copy;
                 if lines.is_empty() {
-                    format!("skript: {notes} noter efter körning")
+                    Ok(format!("skript: {notes} noter efter körning"))
                 } else {
-                    format!("skript: {notes} noter efter körning · {}", lines.join(" · "))
+                    Ok(format!("skript: {notes} noter efter körning · {}", lines.join(" · ")))
                 }
             }
-            Err(e) => format!("skript: {e} (tagningen orörd)"),
+            Err(e) => Err(format!("skript: {e} (tagningen orörd)")),
         }
     }
 
     /// **Mastering mot ett mått.** Närmaste loudness-preset sätts, mixen renderas en gång och
     /// normaliseras på samma väg som exporten (`normalize_to_preset`), och både före och efter
     /// rapporteras uppmätt. Modellen får inte påstå en nivå den inte kan mäta.
-    fn ai_master_to_target(&mut self, target_lufs: f32) -> String {
+    fn ai_master_to_target(&mut self, target_lufs: f32) -> Result<String, String> {
         if !(-30.0..=0.0).contains(&target_lufs) {
-            return format!("master: {target_lufs:.1} LUFS är inget rimligt mål (−30 till 0)");
+            return Err(format!("master: {target_lufs:.1} LUFS är inget rimligt mål (−30 till 0)"));
         }
         let idx = crate::audio::ai_tools::nearest_loudness_index(target_lufs);
         let preset = crate::audio::LoudnessPreset::ALL[idx];
         let buf = match self.ai_render_mix() {
             Ok(b) => b,
-            Err(e) => return format!("master: kunde inte rendera ({e})"),
+            Err(e) => return Err(format!("master: kunde inte rendera ({e})")),
         };
         let before = crate::audio::loudness::integrated_lufs(&buf, 48_000);
         let mut normalized = buf;
@@ -610,11 +644,11 @@ impl SonixApp {
         let after = crate::audio::loudness::integrated_lufs(&normalized, 48_000);
         let peak = crate::audio::loudness::true_peak_db(&normalized);
         self.export_loudness_idx = idx;
-        format!(
+        Ok(format!(
             "master: mål {target_lufs:.1} LUFS → {} ({}). Uppmätt {before:.1} LUFS före, {after:.1} LUFS efter, topp {peak:.1} dB",
             preset.label(),
             preset.target_lufs()
-        )
+        ))
     }
 
     /// **Bekräftar** en väntande sektionsplan: sektionerna läggs efter varandra från takt 1.

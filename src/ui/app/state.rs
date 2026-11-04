@@ -140,7 +140,7 @@ pub struct Section {
     pub bars: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChannelStrip {
     pub name: String,
     pub icon: String,

@@ -220,6 +220,14 @@ pub struct TimelineUndoSnapshot {
     /// `playlist_tracks`, så en masterändring kunde inte ångras alls och en plugin-kurva
     /// ångrades i gränssnittet men inte i ljudet — se [`state::NonTrackSound`].
     pub non_track: state::NonTrackSound,
+    /// **Kanalracket.** `load_drum_kit` byter namn, sample och noter på upp till åtta kanaler,
+    /// `chop_channel` skriver slicar och `write_pattern` skriver steg — inget av det fanns i
+    /// snapshotet, så ett AI-anrop gick inte att ångra. `pcm_audio` är `Arc`, så klonen kostar en
+    /// referensräkning per kanal, inte en kopia av musiken.
+    pub channels: Vec<state::ChannelStrip>,
+    /// **Sektionerna.** `plan_sections` lägger dem i arrangemanget; utan dem i snapshotet
+    /// överlevde de en ångring som påstod att inget hade hänt.
+    pub sections: Vec<state::Section>,
     pub selected_timeline_track: usize,
     pub selected_audio_region: Option<(usize, usize)>,
     pub song_time: f32,
@@ -1084,6 +1092,8 @@ impl SonixApp {
 /// Bygger en ångringspunkt av läget just nu (Fas 6.2: mixern ingår).
 pub(crate) fn current_snapshot(&self, description: &str) -> TimelineUndoSnapshot {
     TimelineUndoSnapshot {
+        channels: self.channels.clone(),
+        sections: self.sections.clone(),
         playlist_tracks: self.playlist_tracks.clone(),
         patterns: self.patterns.clone(),
         bus_volume: self.bus_volume,
@@ -1161,6 +1171,11 @@ fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
     // **Mastern och plugin-kurvorna** (Fas 6.2): `apply_non_track_sound` nollar kurvornas
     // `last_sent` och skickar hela kedjan till motorn, så ångringen **hörs** och inte bara syns.
     self.apply_non_track_sound(&snapshot.non_track);
+    // Kanalerna och sektionerna tillbaka, och kanalernas steg/noter till motorn: annars syns
+    // ångringen i racket men hörs inte i nästa takt.
+    self.channels = snapshot.channels.clone();
+    self.sections = snapshot.sections.clone();
+    self.sync_active_pattern_from_ui();
     self.bpm = snapshot.bpm;
     self.tempo_points = snapshot.tempo_points.clone();
     self.selected_timeline_track = snapshot.selected_timeline_track;
