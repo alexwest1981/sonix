@@ -44,12 +44,25 @@ jobs:
           # (`__libc_single_threaded`, `__isoc23_strtol`), och manylinux_2_28 har 2.28 — länkningen
           # faller på "undefined symbol". Se docs/STEM-SEPARATION.md; neural byggs lokalt.
           set -euo pipefail
-          # **ffmpeg behövs för testsviten, inte för bygget.** containerbilden har det inte,
-          # och tio prov (video-motorn och FLAC-läsaren) faller utan — med flit, för att ett
-          # tyst hopp över dem vore värre. Se `docs/STEM-SEPARATION.md`.
           dnf install -y --setopt=install_weak_deps=False \
             gcc gcc-c++ make cmake clang clang-libs pkgconf-pkg-config alsa-lib-devel alsa-lib \
-            binutils tar gzip curl which ffmpeg
+            binutils tar gzip curl which
+
+      # **ffmpeg behövs för testsviten, inte för bygget.** manylinux-arkivets `dnf` har ingen
+      # ffmpeg (mätt: `No match for argument: ffmpeg`), och tio prov — videomotorn och
+      # FLAC-läsaren — faller utan den, med flit: ett tyst hopp vore värre. En statisk binär i
+      # /usr/local/bin i stället för fler repon: samma väg för båda arkitekturerna.
+      - name: Install ffmpeg (for the test suite)
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64) arch=arm64 ;;
+            *) echo "okänd arkitektur: $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${arch}-static.tar.xz" \
+            | tar -xJ --strip-components=1 -C /usr/local/bin --wildcards '*/ffmpeg' '*/ffprobe'
+          ffmpeg -version | head -1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
