@@ -194,7 +194,12 @@ fn error_text(api: &Api, code: i32) -> String {
         if msg.is_null() {
             return format!("error {code}");
         }
-        std::ffi::CStr::from_ptr(msg).to_string_lossy().into_owned()
+        // **`c_char` är `i8` på x86_64 och `u8` på aarch64.** Bindningen deklarerar
+        // `*const i8` för båda, så utan casten kompilerar filen bara på x86_64 — och
+        // aarch64-releasen föll på det (mätt 2026-11-04).
+        std::ffi::CStr::from_ptr(msg.cast::<std::ffi::c_char>())
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
