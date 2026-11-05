@@ -716,6 +716,26 @@ fn saved_clip_file(clips: &[crate::ui::app::SunoClip], id: &str) -> Option<std::
         .filter(|file| file.exists())
 }
 
+/// **Skriver det senaste Suno-felet till disk**, så det går att läsa efter en körning som
+/// startades från skrivbordet. En rad per fel, med tidsstämpel; filen växer långsamt och
+/// skrivs bara när något faktiskt gick fel.
+pub(crate) fn suno_error_log(error: &str) {
+    use std::io::Write;
+    let dir = crate::paths::paths().logs_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("suno_errors.log"))
+    {
+        let _ = writeln!(file, "{stamp}: {error}");
+    }
+}
+
 /// **Handlar felet om sessionen?** Bara då får panelen säga "inte inloggad". Ett avvisat
 /// skapande (400, kredit, ogiltigt fält) lämnar sessionen orörd.
 fn looks_signed_out(error: &str) -> bool {
@@ -1414,6 +1434,10 @@ impl SonixApp {
                 // skapa → "utloggad" → Kontrollera igen → inloggad → skapa → "utloggad"
                 // (Alex 2026-11-05). Nu fälls flaggan bara när felet handlar om sessionen.
                 println!("suno: anropet föll: {error}");
+                // **Felet skrivs till en fil också.** Appen startas från skrivbordet, och där
+                // finns ingen terminal att läsa `println!` ur — utan filen är det enda som
+                // återstår att gissa (Alex 2026-11-05: "fick att jag inte var inloggad").
+                suno_error_log(&error);
                 let signed_out = looks_signed_out(&error);
                 if signed_out {
                     self.suno_signed_in = false;
