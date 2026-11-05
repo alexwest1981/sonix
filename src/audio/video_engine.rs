@@ -566,7 +566,13 @@ mod tests {
     /// without anything being wrong, while a stalled or dead reader falls to near zero and
     /// cannot pass. That a *late* frame is caught by `a_shown_frame_is_less_than_100_ms_old`,
     /// which bounds the age of every handed-out frame.
+    // **Mäter väggklocka, alltså inte i den parallella sviten.** ~1 400 prov startar samtidigt
+    // och varje videoprov drar igång sin egen ffmpeg; då kan ingen bildruta hinna fram inom
+    // tjugo sekunder ens på en frisk dekoder (mätt 2026-11-05, tre sviter i rad). Provet finns
+    // kvar och körs serialiserat: `cargo test --bin sonix audio::video_engine -- --ignored
+    // --test-threads=1`, och CI gör det i ett eget steg.
     #[test]
+    #[ignore = "mäter väggklocka — körs serialiserat, se CI"]
     fn playback_delivers_frames_faster_than_the_clip_runs() {
         // Five frames per second: a fifth of the clip's rate, and five times below the
         // measured 25.0 — generous enough that load cannot flake it.
@@ -575,6 +581,19 @@ mod tests {
         let info = probe(&fx.path).expect("probe");
         let mut play = Playback::new(&fx.path, info);
         play.start(0.0).expect("start");
+
+        // **Fönstret börjar när den första bildrutan finns**, inte när dekodern startades.
+        // Uppstarten är en annan sak än takten — och i en full svit kan den ta längre tid än
+        // de två sekunder mätningen varar, vilket gav "0 frames in 2.00 s" på en frisk dekoder
+        // (mätt 2026-11-05 i två sviter i rad).
+        let ready = Instant::now();
+        while ready.elapsed() < FIRST_FRAME && play.latest().is_none() {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            play.latest().is_some(),
+            "ingen första bildruta inom {FIRST_FRAME:?}"
+        );
 
         let window = Duration::from_secs(2);
         let started = Instant::now();

@@ -113,6 +113,13 @@ jobs:
             cargo test --release --locked --no-default-features
           fi
 
+      # **Väggklockeprovet körs serialiserat.** Det mäter bildfrekvens över två sekunder och
+      # kan inte mätas medan ~1 400 andra prov konkurrerar om CPU:n — därför är det `#[ignore]`
+      # i sviten och körs här i stället, ensamt med sin egen ffmpeg.
+      - name: Video timing (serial)
+        if: matrix.features == ''
+        run: cargo test --release --locked --no-default-features audio::video_engine -- --ignored --test-threads=1
+
       # Fas 7.2: siffrorna ska synas i loggen, inte bara finnas som tröskel.
       # (Samma test körs redan i steget ovan och failar vid regress; det här
       # steget visar latens/CPU per buffertstorlek.)
