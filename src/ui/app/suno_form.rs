@@ -18,8 +18,14 @@ pub enum SunoField {
     /// Kryssruta (max mode, personalize).
     Bool(bool),
     /// Slider. `min`/`max` ur schemat när de finns, annars 0..1 — det är skalan Suno använder för
-    /// weirdness och style influence.
-    Number { value: f64, min: f64, max: f64 },
+    /// weirdness och style influence. `whole` är schemats `integer`: servern svarar 400 på
+    /// `variety: 0.5` (den är 0–4 i heltal), så värdet måste avrundas innan det skickas.
+    Number {
+        value: f64,
+        min: f64,
+        max: f64,
+        whole: bool,
+    },
     /// Rullgardin ur `enum`.
     Choice { options: Vec<String>, selected: usize },
 }
@@ -37,11 +43,24 @@ fn field_from_spec(name: &str, spec: &Value) -> SunoField {
     }
     match kind {
         "boolean" => SunoField::Bool(false),
-        "number" | "integer" => SunoField::Number {
-            value: spec.get("default").and_then(|d| d.as_f64()).unwrap_or(0.5),
-            min: spec.get("minimum").and_then(|d| d.as_f64()).unwrap_or(0.0),
-            max: spec.get("maximum").and_then(|d| d.as_f64()).unwrap_or(1.0),
-        },
+        "number" | "integer" => {
+            let whole = kind == "integer";
+            let min = spec.get("minimum").and_then(|d| d.as_f64()).unwrap_or(0.0);
+            let max = spec.get("maximum").and_then(|d| d.as_f64()).unwrap_or(1.0);
+            // **Ett heltal utan default står utanför sitt eget intervall** — då skickas det inte
+            // alls, och servern får välja. `0` är ett riktigt värde (variety "Off"), så det får
+            // aldrig bli standard för ett oanvänt fält.
+            let value = spec
+                .get("default")
+                .and_then(|d| d.as_f64())
+                .unwrap_or(if whole { min - 1.0 } else { 0.5 });
+            SunoField::Number {
+                value,
+                min,
+                max,
+                whole,
+            }
+        }
         _ => SunoField::Text {
             value: String::new(),
             multiline: matches!(
@@ -100,9 +119,17 @@ fn carry_value(old: SunoField, new: SunoField) -> SunoField {
             SunoField::Text { value, multiline }
         }
         (SunoField::Bool(on), SunoField::Bool(_)) => SunoField::Bool(on),
-        (SunoField::Number { value, .. }, SunoField::Number { min, max, .. }) => {
-            SunoField::Number { value, min, max }
-        }
+        (
+            SunoField::Number { value, .. },
+            SunoField::Number {
+                min, max, whole, ..
+            },
+        ) => SunoField::Number {
+            value,
+            min,
+            max,
+            whole,
+        },
         // The schema's own list decides which choices exist; the index is kept if it still fits.
         (SunoField::Choice { selected, .. }, SunoField::Choice { options, .. }) => {
             SunoField::Choice {
@@ -137,11 +164,22 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
             }
             // **Ett tal utanför schemats intervall skickas inte alls.** `duration` har 15–360 och
             // en nolla där betyder "låt modellen välja"; servern svarade `invalid_request` på den.
-            SunoField::Number { value, min, max } => {
-                if *value < *min || *value > *max {
+            SunoField::Number {
+                value,
+                min,
+                max,
+                whole,
+            } => {
+                if value.is_nan() || *value < *min || *value > *max {
                     continue;
                 }
-                json!(value)
+                // Schemats `integer` skickas som heltal: `variety: 0.5` gav `invalid request
+                // body` (mätt 2026-11-05), den är 0–4 och tar inga halvor.
+                if *whole {
+                    json!(value.round() as i64)
+                } else {
+                    json!(value)
+                }
             }
             SunoField::Choice { options, selected } => match options.get(*selected) {
                 Some(choice) => json!(choice),
@@ -307,6 +345,7 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
                 value: 0.0,
                 min: 15.0,
                 max: 360.0,
+                whole: true,
             },
         ),
         (
@@ -323,16 +362,14 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
             SunoField::Number {
                 value: 0.5,
                 min: 0.0,
-                max: 1.0,
-            },
+                max: 1.0, whole: false },
         ),
         (
             "controls.style_influence".to_string(),
             SunoField::Number {
                 value: 0.5,
                 min: 0.0,
-                max: 1.0,
-            },
+                max: 1.0, whole: false },
         ),
     ]
 }
@@ -340,6 +377,44 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Schemats `integer` skickas som heltal, och ett orört heltal skickas inte alls.**
+    /// `variety` är 0–4 och servern svarade `invalid request body` på `0.5` — och `0` är ett
+    /// riktigt värde ("Off"), så ett oanvänt fält får inte smyga in en nolla.
+    #[test]
+    fn an_integer_is_sent_whole_and_an_untouched_one_is_omitted() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "controls": {
+                    "type": "object",
+                    "properties": {
+                        "variety": {"type": "integer", "minimum": 0, "maximum": 4},
+                        "weirdness": {"type": "number", "minimum": 0, "maximum": 1}
+                    }
+                }
+            }
+        });
+        let mut fields = fields_from_schema(&schema);
+        let untouched = args_from_form(&fields);
+        assert!(
+            untouched["controls"].get("variety").is_none(),
+            "ett orört heltal skickades: {untouched}"
+        );
+
+        for (name, field) in fields.iter_mut() {
+            if let SunoField::Number { value, whole, .. } = field
+                && name.ends_with("variety")
+            {
+                assert!(*whole, "{name} borde vara heltal");
+                *value = 3.0;
+            }
+        }
+        let args = args_from_form(&fields);
+        assert_eq!(args["controls"]["variety"], json!(3));
+        assert!(args["controls"]["variety"].is_i64());
+    }
+
 
     /// Ett schema av den form Sunos panel antyder: enums, tal, bool och text.
     fn reference_schema() -> Value {

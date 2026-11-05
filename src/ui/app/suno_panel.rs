@@ -456,10 +456,19 @@ impl SonixApp {
                 SunoField::Bool(value) => {
                     ui.checkbox(value, &label);
                 }
-                SunoField::Number { value, min, max } => {
+                SunoField::Number {
+                    value,
+                    min,
+                    max,
+                    whole,
+                } => {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&label).size(Theme::FONT_S));
-                        ui.add(egui::DragValue::new(value).range(*min..=*max));
+                        let mut drag = egui::DragValue::new(value).range(*min..=*max);
+                        if *whole {
+                            drag = drag.speed(1.0).max_decimals(0);
+                        }
+                        ui.add(drag);
                     });
                 }
                 SunoField::Choice { options, selected } => {
@@ -1679,17 +1688,34 @@ impl SonixApp {
     }
 
     fn suno_field_number(&mut self, ui: &mut egui::Ui, slot: Option<usize>, label: &'static str) {
-        let Some((_, SunoField::Number { value, min, max })) =
-            slot.and_then(|i| self.suno_form.get_mut(i))
+        let Some((
+            _,
+            SunoField::Number {
+                value,
+                min,
+                max,
+                whole,
+            },
+        )) = slot.and_then(|i| self.suno_form.get_mut(i))
         else {
             return;
         };
         ui.horizontal(|ui| {
             ui.label(RichText::new(crate::i18n::t(label).to_string()).size(Theme::FONT_S));
-            ui.add(
-                egui::Slider::new(value, *min..=*max)
-                    .custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
-            );
+            let mut slider = egui::Slider::new(value, *min..=*max);
+            slider = if *whole {
+                // Heltal: inga halvor, och ett oanvänt fält (utanför intervallet) säger "—".
+                slider.step_by(1.0).custom_formatter(|v, _| {
+                    if v < *min || v > *max {
+                        "—".to_string()
+                    } else {
+                        format!("{v:.0}")
+                    }
+                })
+            } else {
+                slider.custom_formatter(|v, _| format!("{:.0} %", v * 100.0))
+            };
+            ui.add(slider);
         });
     }
 

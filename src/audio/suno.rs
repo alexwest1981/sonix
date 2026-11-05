@@ -2807,6 +2807,7 @@ mod live_probe {
         // **Vad lyssna-verktyget vill ha och vad det svarar.** Det finns ett `audio-listen` på
         // servern; appen använder i stället `audio-download`, som kostar en kredit.
         for name in [
+            "audio-create",
             "audio-download",
             "audio-retrieve",
             "audio-listen",
