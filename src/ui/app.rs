@@ -156,6 +156,9 @@ pub enum SunoTask {
         tools: Vec<String>,
         tool_name: Option<String>,
         schema: Option<serde_json::Value>,
+        /// Scheman för de andra skapartjänsterna (tal, korta ljud), så deras formulär också
+        /// byggs ur serverns egna fält i stället för ur gissningar.
+        alt_schemas: Vec<(String, serde_json::Value)>,
         voices: Vec<(String, String)>,
         voice_hint: Option<String>,
         voice_param: Option<String>,
@@ -166,7 +169,34 @@ pub enum SunoTask {
     Playlists(Vec<crate::audio::suno::SunoPlaylist>),
     Workspaces(Vec<crate::audio::suno::SunoWorkspace>),
     Account(Box<crate::audio::suno::SunoAccount>),
+    /// Ett gilla/ogilla svar: id:t och det nya läget.
+    Liked {
+        id: String,
+        liked: bool,
+    },
     Clips(Vec<crate::audio::suno::SunoSong>),
+}
+
+/// **Det spelaren behöver veta.** Positionen räknas från när ljudet startade: `PlayAudition`
+/// har ingen sökning, så en klocka är exakt lika sann som motorns egen räknare — och när ljudet
+/// tystnar säger `is_audition_playing()` att det är slut.
+#[derive(Clone, Debug, Default)]
+pub struct SunoPlayer {
+    pub title: String,
+    pub seconds: f32,
+    pub started: Option<std::time::Instant>,
+    /// Vågformen, 0..1 per stapel. Räknad ur samma PCM som spelas.
+    pub peaks: Vec<f32>,
+}
+
+impl SunoPlayer {
+    /// Sekunder in i låten, klämt mot längden.
+    pub fn elapsed(&self) -> f32 {
+        self.started
+            .map(|at| at.elapsed().as_secs_f32())
+            .unwrap_or(0.0)
+            .min(self.seconds.max(0.0))
+    }
 }
 
 /// **En av alternativen Suno skapade.** Två clips per beställning, ingen fil förrän man hämtar
@@ -674,6 +704,19 @@ pub struct SonixApp {
     pub suno_covers: std::collections::HashMap<String, egui::TextureHandle>,
     /// Adresser som redan är beställda (eller misslyckats) — aldrig två hämtningar för samma bild.
     pub suno_cover_tries: std::collections::HashSet<String>,
+    /// **Spelaren längst ned.** Spelar en hämtad fil i appen i stället för i VLC, med tid och
+    /// vågform — det var det som saknades mest jämfört med Sunos sida.
+    pub suno_player: Option<SunoPlayer>,
+    /// 0 låtar, 1 tal, 2 korta ljud — samma tre flikar som Sunos egen skaparsida.
+    pub suno_mode: u8,
+    /// Formulären för tal och korta ljud, byggda ur serverns scheman när de kommit.
+    pub suno_speech_form: Vec<(String, crate::ui::app::suno_form::SunoField)>,
+    pub suno_sounds_form: Vec<(String, crate::ui::app::suno_form::SunoField)>,
+    pub suno_alt_schemas: Vec<(String, serde_json::Value)>,
+    /// Filterpillren i arbetsytan: 0 alla, 1 gillade, 2 publika, 3 uppladdningar.
+    pub suno_filter: u8,
+    /// **Enkel eller avancerad form.** Enkel döljer "Fler val", som Sunos egen växel.
+    pub suno_advanced: bool,
     /// **Biblioteket ska läsas så snart Suno är ledigt.** Sätts när en läsning begärs medan en
     /// annan körning pågår (t.ex. arbetsytorna direkt efter inloggningen) — annars tappas den.
     pub suno_library_wanted: bool,
@@ -1438,6 +1481,13 @@ impl SonixApp {
             suno_covers: std::collections::HashMap::new(),
             suno_cover_tries: std::collections::HashSet::new(),
             suno_library_wanted: false,
+            suno_filter: 0,
+            suno_player: None,
+            suno_mode: 0,
+            suno_speech_form: Vec::new(),
+            suno_sounds_form: Vec::new(),
+            suno_alt_schemas: Vec::new(),
+            suno_advanced: true,
             suno_cover_rx: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             suno_tools: Vec::new(),
             suno_last: None,

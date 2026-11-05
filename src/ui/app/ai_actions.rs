@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::audio::ai_tools;
 
+use super::suno_form::SunoField;
 use super::{SharedResult, SonixApp, SunoMeta, SunoTask};
 
 /// **Ett kvitto med sin dom.** `ok` sätts av utföraren, aldrig av texten: en MCP-klient avgör på
@@ -734,10 +735,18 @@ impl SonixApp {
             }
         };
         let voice_hint = session.voices_hint();
+        // **Tal och korta ljud har egna verktyg med egna fält** (`speech-create`,
+        // `sounds-create` — mätta 2026-11-05). Deras scheman följer med, så flikarna ritar
+        // serverns fält i stället för en påhittad lista.
+        let alt_schemas = ["speech-create", "sounds-create"]
+            .iter()
+            .filter_map(|name| session.tool_schema(name).map(|schema| (name.to_string(), schema)))
+            .collect();
         Ok(SunoTask::Connected {
             tools,
             tool_name,
             schema,
+            alt_schemas,
             voices,
             voice_hint,
             voice_param,
@@ -877,6 +886,53 @@ impl SonixApp {
         });
     }
 
+    /// **Skapa tal eller ett kort ljud** — serverns egna `speech-create` / `sounds-create`.
+    /// Fälten är schemats, och svaret blir två alternativ precis som en låt.
+    pub fn suno_create_alt(&mut self, mode: u8) {
+        let tool = match mode {
+            1 => "speech-create",
+            2 => "sounds-create",
+            _ => return,
+        };
+        if self.suno_pending.is_some() {
+            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            return;
+        }
+        let form = if mode == 1 {
+            std::mem::take(&mut self.suno_speech_form)
+        } else {
+            std::mem::take(&mut self.suno_sounds_form)
+        };
+        if form.is_empty() {
+            self.suno_status =
+                crate::i18n::t("⚠ Anslut först — fälten kommer från serverns schema").to_string();
+            return;
+        }
+        // **Ett tomt fält skickas inte.** Servern avvisar okända nycklar och tomma strängar
+        // gör svaret grumligt; bara det man fyllt i går iväg.
+        let args = crate::ui::app::suno_form::args_from_form(&form);
+        if mode == 1 {
+            self.suno_speech_form = form;
+        } else {
+            self.suno_sounds_form = form;
+        }
+        if args.as_object().is_none_or(|object| object.is_empty()) {
+            self.suno_status = crate::i18n::t("⚠ Skriv något först.").to_string();
+            return;
+        }
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::i18n::t("⏳ Suno is creating the two takes…").to_string();
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect_cached()
+                .and_then(|mut session| session.generate_named(tool, args))
+                .map(SunoTask::Generated);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
     /// Lists the user's own Suno library on a background thread.
     pub fn suno_load_library(&mut self) {
         if self.suno_pending.is_some() {
@@ -931,7 +987,8 @@ impl SonixApp {
             return;
         };
         if let Some(file) = clip.file.clone() {
-            crate::platform::open_path(&file.to_string_lossy());
+            let title = clip.title.clone();
+            self.suno_play_local(&file, &title);
             return;
         }
         if self.suno_pending.is_some() {
@@ -952,6 +1009,129 @@ impl SonixApp {
         });
     }
 
+    /// **Gilla eller ogilla en låt** — serverns `audio-like`/`audio-unlike`. Inget ljud rörs, och
+    /// inga krediter går åt.
+    pub fn suno_toggle_like(&mut self, index: usize) {
+        let Some(song) = self.suno_library.get(index).cloned() else {
+            return;
+        };
+        if self.suno_pending.is_some() {
+            return;
+        }
+        let liked = !song.liked;
+        let id = song.id.clone();
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect_cached().and_then(|mut session| {
+                let (tool, args) = if liked {
+                    (
+                        "audio-like",
+                        serde_json::json!({ "id": id, "dislike": false }),
+                    )
+                } else {
+                    ("audio-unlike", serde_json::json!({ "id": id }))
+                };
+                session.call(tool, args).map(|_| SunoTask::Liked { id, liked })
+            });
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// **Spelar en hämtad fil i appen** — inte i VLC. Vågformen räknas ur samma PCM som går
+    /// till motorn, och tiden räknas från start. Går filen inte att läsa öppnas den i
+    /// systemspelaren i stället, så en okänd kodning inte blir en återvändsgränd.
+    pub fn suno_play_local(&mut self, file: &std::path::Path, title: &str) -> bool {
+        let path = file.to_string_lossy().to_string();
+        let Some((left, right, sample_rate)) = crate::ui::app::waveform::load_sample_pcm_arcs(&path)
+        else {
+            crate::platform::open_path(&path);
+            self.suno_status = crate::tstatus!(
+                "⚠ Kunde inte spela '{}' i appen — öppnade den i systemspelaren",
+                title
+            );
+            return false;
+        };
+        let seconds = if sample_rate > 0 {
+            left.len() as f32 / sample_rate as f32
+        } else {
+            0.0
+        };
+        // **Samma vågform som kanalracket ritar**, 160 staplar räcker för en rad — och
+        // normaliserad, annars blir en tyst låt en platt linje.
+        let mut peaks = crate::ui::app::waveform::waveform_preview_from_pcm(&left, 160);
+        let max = peaks.iter().copied().fold(0.0f32, f32::max);
+        if max > 0.0 {
+            for peak in peaks.iter_mut() {
+                *peak /= max;
+            }
+        }
+        let sent = self.engine.send_command(crate::audio::AudioCommand::PlayAudition {
+            left,
+            right,
+            sample_rate: sample_rate as f32,
+            volume: 0.9,
+            pitch_ratio: 1.0,
+            time_stretch_ratio: 1.0,
+            is_reverse: false,
+            loop_playback: false,
+        });
+        if sent.is_err() {
+            crate::platform::open_path(&path);
+            return false;
+        }
+        self.suno_player = Some(crate::ui::app::SunoPlayer {
+            title: title.to_string(),
+            seconds,
+            started: Some(std::time::Instant::now()),
+            peaks,
+        });
+        true
+    }
+
+    /// **Dela:** öppnar låtens egen sida i webbläsaren. Ingen kredit, inget API.
+    pub fn suno_share(&mut self, index: usize) {
+        let Some(song) = self.suno_library.get(index) else {
+            return;
+        };
+        match song.song_url.clone() {
+            Some(url) => {
+                if crate::platform::open_url(&url).is_err() {
+                    self.suno_status = crate::tstatus!("⚠ Kunde inte öppna {}", url);
+                }
+            }
+            None => {
+                self.suno_status =
+                    crate::i18n::t("⚠ Låten har ingen egen sida att dela").to_string();
+            }
+        }
+    }
+
+    /// **Remixa:** tar låtens stil och beskrivning in i formuläret och går till Skapa.
+    pub fn suno_remix(&mut self, index: usize) {
+        let Some(song) = self.suno_library.get(index) else {
+            return;
+        };
+        self.suno_prompt_input = song
+            .description
+            .clone()
+            .filter(|text| !text.trim().is_empty())
+            .or_else(|| song.style.clone())
+            .unwrap_or_default();
+        if let Some(style) = song.style.clone() {
+            let slots = crate::ui::app::suno_form::slots(&self.suno_form);
+            if let Some(slot) = slots.styles
+                && let Some((_, SunoField::Text { value, .. })) = self.suno_form.get_mut(slot)
+            {
+                *value = style;
+            }
+        }
+        self.suno_tab = 0;
+        self.suno_status = crate::tstatus!("✎ Remix av '{}'", song.title);
+    }
+
     /// Plays one library row: the file is fetched (one credit) and opened in the system player.
     pub fn suno_play_library(&mut self, index: usize) {
         let Some(song) = self.suno_library.get(index).cloned() else {
@@ -965,9 +1145,13 @@ impl SonixApp {
         // disk. Samma regel som alternativflikarna har haft hela tiden (Alex 2026-11-05:
         // "det kostar tokens för att ens lyssna på en redan färdig låt i biblioteket").
         if let Some(file) = saved_clip_file(&self.suno_clips, &song.id) {
-            crate::platform::open_path(&file.to_string_lossy());
-            self.suno_status =
-                crate::tstatus!("🎧 Spelar '{}' från disken — inget hämtat, ingen kredit", song.title);
+            let title = song.title.clone();
+            if self.suno_play_local(&file, &title) {
+                self.suno_status = crate::tstatus!(
+                    "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit",
+                    title
+                );
+            }
             return;
         }
         self.suno_library_pending = Some(index);
@@ -1104,11 +1288,13 @@ impl SonixApp {
                 tools,
                 tool_name,
                 schema,
+                alt_schemas,
                 voices,
                 voice_hint,
                 voice_param,
             }) => {
                 self.suno_tools = tools;
+                self.suno_alt_schemas = alt_schemas;
                 // Arbetsytorna behövs för "Spara i": väljaren kan inte fyllas av gissningar.
                 self.suno_load_meta(SunoMeta::Workspaces);
                 // **Och låtarna: arbetsytan till höger ska vara fylld när appen öppnas**, som
@@ -1168,6 +1354,16 @@ impl SonixApp {
             Ok(SunoTask::Account(account)) => {
                 self.suno_account = Some(*account);
                 self.suno_status = String::new();
+            }
+            Ok(SunoTask::Liked { id, liked }) => {
+                if let Some(song) = self.suno_library.iter_mut().find(|s| s.id == id) {
+                    song.liked = liked;
+                }
+                self.suno_status = if liked {
+                    crate::i18n::t("♥ Gillad").to_string()
+                } else {
+                    crate::i18n::t("♡ Inte längre gillad").to_string()
+                };
             }
             Ok(SunoTask::Library(songs)) => {
                 self.suno_status = crate::tstatus!("☀ {} songs in the library.", songs.len());

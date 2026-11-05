@@ -114,6 +114,12 @@ pub struct SunoSong {
     pub style: Option<String>,
     /// Beskrivningen/prompten som står under stilen (`metadata.description`).
     pub description: Option<String>,
+    /// Låtens sida hos Suno — det som "dela" öppnar.
+    pub song_url: Option<String>,
+    /// `public`/`private`, för filtret.
+    pub visibility: Option<String>,
+    /// `generated`/`upload`, för filtret.
+    pub kind: Option<String>,
     pub liked: bool,
     pub raw: Value,
 }
@@ -432,6 +438,9 @@ impl SunoSession {
             cover_url: None,
             style: None,
             description: None,
+            song_url: None,
+            visibility: None,
+            kind: None,
             liked: false,
             raw: payload,
         };
@@ -1264,6 +1273,9 @@ fn parse_song(v: &Value) -> Option<SunoSong> {
         cover_url: text_at(o, &["cover_image_large_url", "cover_image_url"]),
         style: meta.and_then(|m| text_at(m, &["style", "tags", "genre"])),
         description: meta.and_then(|m| text_at(m, &["description", "prompt"])),
+        song_url: text_at(o, &["song_url", "audio_url_page", "url"]),
+        visibility: text_at(o, &["visibility"]),
+        kind: text_at(o, &["type", "kind"]),
         liked: o.get("liked").and_then(Value::as_bool).unwrap_or(false),
         raw: v.clone(),
     })
@@ -2528,6 +2540,9 @@ mod tests {
                         cover_url: None,
             style: None,
             description: None,
+            song_url: None,
+            visibility: None,
+            kind: None,
             liked: false,
 raw: json!({ "id": "song-9", "title": "Row Song" }),
         };
@@ -2736,6 +2751,9 @@ raw: json!({ "id": "song-9", "title": "Row Song" }),
                         cover_url: None,
             style: None,
             description: None,
+            song_url: None,
+            visibility: None,
+            kind: None,
             liked: false,
 raw: json!({}),
         };
@@ -2788,7 +2806,16 @@ mod live_probe {
         }
         // **Vad lyssna-verktyget vill ha och vad det svarar.** Det finns ett `audio-listen` på
         // servern; appen använder i stället `audio-download`, som kostar en kredit.
-        for name in ["audio-download", "audio-retrieve", "audio-listen", "account-usage"] {
+        for name in [
+            "audio-download",
+            "audio-retrieve",
+            "audio-listen",
+            "account-usage",
+            "speech-create",
+            "sounds-create",
+            "audio-like",
+            "audio-upload-create",
+        ] {
             match session.tool_schema(name) {
                 Some(schema) => println!("SCHEMA {name}: {schema}"),
                 None => println!("SCHEMA {name}: saknas"),

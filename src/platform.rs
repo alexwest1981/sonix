@@ -38,6 +38,13 @@ pub fn url_command(os: &str, url: &str) -> (String, Vec<String>) {
 /// Öppnar `url` i användarens webbläsare. `Err` betyder att **starten** misslyckades, och då
 /// visar anroparen adressen i stället — en inloggning utan adress är en återvändsgränd.
 pub fn open_url(url: &str) -> std::io::Result<()> {
+    // **Provsviten får aldrig öppna en webbläsare.** Inloggningsproven startar en egen
+    // OAuth-server på en slumpad port och kör hela flödet mot den; utan den här raden öppnade
+    // varje `cargo test` en riktig flik med `.../authorize/?client_id=dcr-mock-42` i Alex
+    // webbläsare (rapporterat 2026-11-05).
+    if cfg!(test) {
+        return Ok(());
+    }
     let (program, args) = url_command(std::env::consts::OS, url);
     Command::new(program).args(args).spawn().map(|_| ())
 }
@@ -97,6 +104,10 @@ mod tests {
 
 /// Öppnar en fil med systemets spelare — t.ex. en hämtad låt som ska lyssnas igenom.
 pub fn open_path(path: &str) -> bool {
+    // Samma regel som `open_url`: ett prov öppnar ingen extern spelare.
+    if cfg!(test) {
+        return true;
+    }
     let (program, args) = url_command(std::env::consts::OS, path);
     Command::new(program).args(args).spawn().is_ok()
 }

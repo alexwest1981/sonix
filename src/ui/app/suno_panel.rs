@@ -147,6 +147,97 @@ impl SonixApp {
                 |ui| self.suno_workspace_column(ui),
             );
         });
+        self.suno_player_bar(ui);
+    }
+
+    /// **Spelaren längst ned, i full bredd** — som Sunos egen rad: titel, tid, vågform med
+    /// läget utritat, och stopp. Ljudet går genom appens egen motor, inte genom VLC.
+    fn suno_player_bar(&mut self, ui: &mut egui::Ui) {
+        let Some(player) = self.suno_player.clone() else {
+            return;
+        };
+        // Låten är slut när motorn inte spelar längre — då försvinner raden av sig själv.
+        let playing = self.engine.is_audition_playing();
+        if !playing && player.started.is_some_and(|at| at.elapsed().as_secs_f32() > 0.3) {
+            self.suno_player = None;
+            return;
+        }
+        ui.separator();
+        ui.horizontal(|ui| {
+            let button = if playing { "■" } else { "▶" };
+            if ui
+                .add(egui::Button::new(RichText::new(button).size(Theme::FONT_M)))
+                .on_hover_text(crate::i18n::t("Spela / stoppa"))
+                .clicked()
+            {
+                if playing {
+                    let _ = self.engine.send_command(crate::audio::AudioCommand::StopAudition);
+                } else if let Some(start) = player.started.as_ref() {
+                    let _ = start;
+                    // Startar om från början: filen är redan avkodad en gång, så det är
+                    // samma väg som första gången.
+                    if let Some(file) = self
+                        .suno_clips
+                        .iter()
+                        .find(|clip| clip.title == player.title)
+                        .and_then(|clip| clip.file.clone())
+                    {
+                        let title = player.title.clone();
+                        self.suno_play_local(&file, &title);
+                    }
+                }
+            }
+            ui.label(
+                RichText::new(&player.title)
+                    .strong()
+                    .size(Theme::FONT_S)
+                    .color(palette().text()),
+            );
+            let elapsed = player.elapsed();
+            ui.label(
+                RichText::new(format!(
+                    "{}:{:02} / {}:{:02}",
+                    (elapsed as u64) / 60,
+                    (elapsed as u64) % 60,
+                    (player.seconds as u64) / 60,
+                    (player.seconds as u64) % 60
+                ))
+                .size(Theme::FONT_XS)
+                .color(palette().text_muted()),
+            );
+            // Vågformen: en stapel per peak, den spelade delen i orange.
+            let width = (ui.available_width() - 40.0).max(80.0);
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 26.0), egui::Sense::hover());
+            let painter = ui.painter();
+            let played = if player.seconds > 0.0 {
+                (elapsed / player.seconds).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let count = player.peaks.len().max(1);
+            let step = rect.width() / count as f32;
+            for (index, peak) in player.peaks.iter().enumerate() {
+                let height = (peak.clamp(0.0, 1.0) * rect.height() * 0.9).max(1.5);
+                let x = rect.left() + index as f32 * step;
+                let colour = if (index as f32 / count as f32) <= played {
+                    palette().orange()
+                } else {
+                    palette().text_muted()
+                };
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::pos2(x, rect.center().y - height / 2.0),
+                        Vec2::new((step - 1.0).max(1.0), height),
+                    ),
+                    1.0,
+                    colour,
+                );
+            }
+            if ui.button("✕").on_hover_text(crate::i18n::t("Stäng")).clicked() {
+                let _ = self.engine.send_command(crate::audio::AudioCommand::StopAudition);
+                self.suno_player = None;
+            }
+        });
     }
 
     /// Rubriken: namn, läge, krediter och den senaste repliken från servern.
@@ -235,6 +326,23 @@ impl SonixApp {
 
     /// Mittkolumnen: rutan som är vald, och Skapa-knappen längst ned i full bredd.
     fn suno_centre(&mut self, ui: &mut egui::Ui) {
+        // **Tre slag av skapande, som Suno:** låtar, tal och korta ljud. Servern har egna
+        // verktyg för varje (`audio-create`, `speech-create`, `sounds-create`).
+        ui.horizontal(|ui| {
+            for (mode, label) in [(0u8, "🎵 Låtar"), (1, "🗣 Tal"), (2, "🔔 Korta ljud")] {
+                let active = self.suno_mode == mode;
+                let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_S);
+                let text = if active {
+                    text.strong().color(palette().orange())
+                } else {
+                    text.color(palette().text_muted())
+                };
+                if ui.add(egui::Button::new(text).fill(egui::Color32::TRANSPARENT)).clicked() {
+                    self.suno_mode = mode;
+                }
+            }
+        });
+        ui.separator();
         let bottom = 44.0;
         let height = (ui.available_height() - bottom).max(120.0);
         ui.allocate_ui_with_layout(
@@ -243,20 +351,24 @@ impl SonixApp {
             |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
-                    .show(ui, |ui| match self.suno_tab {
-                        0 => self.suno_tab_create(ui),
-                        1 => self.suno_tab_voices(ui),
-                        2 => self.suno_tab_library(ui),
-                        3 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Playlists),
-                        4 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Workspaces),
-                        _ => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Account),
+                    .show(ui, |ui| match self.suno_mode {
+                        1 => self.suno_tab_alt(ui, 1),
+                        2 => self.suno_tab_alt(ui, 2),
+                        _ => match self.suno_tab {
+                            0 => self.suno_tab_create(ui),
+                            1 => self.suno_tab_voices(ui),
+                            2 => self.suno_tab_library(ui),
+                            3 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Playlists),
+                            4 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Workspaces),
+                            _ => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Account),
+                        },
                     });
             },
         );
         // **Skapa-knappen sitter längst ned, i full bredd** — det är den handling hela rutan
         // finns för, och hos Suno är det den enda knappen som lyser.
         let width = ui.available_width();
-        let enabled = self.suno_pending.is_none() && self.suno_tab == 0;
+        let enabled = self.suno_pending.is_none() && (self.suno_mode > 0 || self.suno_tab == 0);
         if ui
             .add_enabled(
                 enabled,
@@ -271,7 +383,104 @@ impl SonixApp {
             )
             .clicked()
         {
-            self.suno_create();
+            match self.suno_mode {
+                0 => self.suno_create(),
+                mode => self.suno_create_alt(mode),
+            }
+        }
+    }
+
+    /// **Tal eller korta ljud.** Fälten kommer ur serverns schema för verktyget; etiketterna
+    /// är fältets eget namn, för servern har inga svenska etiketter att hämta.
+    fn suno_tab_alt(&mut self, ui: &mut egui::Ui, mode: u8) {
+        let tool = if mode == 1 { "speech-create" } else { "sounds-create" };
+        let empty = if mode == 1 {
+            self.suno_speech_form.is_empty()
+        } else {
+            self.suno_sounds_form.is_empty()
+        };
+        if empty {
+            let schema = self
+                .suno_alt_schemas
+                .iter()
+                .find(|(name, _)| name == tool)
+                .map(|(_, schema)| schema.clone());
+            let fields = schema
+                .map(|schema| crate::ui::app::suno_form::fields_from_schema(&schema))
+                .unwrap_or_default();
+            if fields.is_empty() {
+                ui.label(
+                    RichText::new(crate::i18n::t(
+                        "Anslut för att hämta serverns fält — de gissas inte fram.",
+                    ))
+                    .size(Theme::FONT_S)
+                    .color(palette().text_muted()),
+                );
+                return;
+            }
+            if mode == 1 {
+                self.suno_speech_form = fields;
+            } else {
+                self.suno_sounds_form = fields;
+            }
+        }
+        let form = if mode == 1 {
+            &mut self.suno_speech_form
+        } else {
+            &mut self.suno_sounds_form
+        };
+        ui.add_space(4.0);
+        for (name, field) in form.iter_mut() {
+            let label = {
+                let mut chars = name.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => name.clone(),
+                }
+            };
+            match field {
+                SunoField::Text { value, multiline } => {
+                    ui.label(RichText::new(&label).size(Theme::FONT_S));
+                    if *multiline {
+                        ui.add(
+                            egui::TextEdit::multiline(value)
+                                .desired_rows(3)
+                                .desired_width(f32::INFINITY),
+                        );
+                    } else {
+                        ui.add(
+                            egui::TextEdit::singleline(value).desired_width(f32::INFINITY),
+                        );
+                    }
+                }
+                SunoField::Bool(value) => {
+                    ui.checkbox(value, &label);
+                }
+                SunoField::Number { value, min, max } => {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(&label).size(Theme::FONT_S));
+                        ui.add(egui::DragValue::new(value).range(*min..=*max));
+                    });
+                }
+                SunoField::Choice { options, selected } => {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(&label).size(Theme::FONT_S));
+                        let shown = options
+                            .get(*selected)
+                            .cloned()
+                            .unwrap_or_else(|| crate::i18n::t("(inget)").to_string());
+                        egui::ComboBox::from_id_salt(format!("suno-alt-{tool}-{name}"))
+                            .selected_text(shown)
+                            .show_ui(ui, |ui| {
+                                for (index, option) in options.iter().enumerate() {
+                                    if ui.selectable_label(*selected == index, option).clicked() {
+                                        *selected = index;
+                                    }
+                                }
+                            });
+                    });
+                }
+            }
         }
     }
 
@@ -389,6 +598,27 @@ impl SonixApp {
                 .desired_width(f32::INFINITY)
                 .hint_text(crate::i18n::t("Sök")),
         );
+        // **Filtren, som hos Suno:** pillren silar listan lokalt. Ingen serverfråga, ingen kredit.
+        ui.horizontal_wrapped(|ui| {
+            for (value, label) in [
+                (0u8, "Alla"),
+                (1, "♥ Gillade"),
+                (2, "Publika"),
+                (3, "Uppladdningar"),
+            ] {
+                let active = self.suno_filter == value;
+                let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_XS);
+                let text = if active {
+                    text.color(palette().bg())
+                } else {
+                    text.color(palette().text_muted())
+                };
+                let fill = if active { palette().orange() } else { palette().panel() };
+                if ui.add(egui::Button::new(text).fill(fill)).clicked() {
+                    self.suno_filter = value;
+                }
+            }
+        });
         ui.add_space(6.0);
 
         struct Row {
@@ -400,11 +630,18 @@ impl SonixApp {
             cover: Option<String>,
             has_file: bool,
             day: String,
+            liked: bool,
         }
         let query = self.suno_library_query.trim().to_lowercase();
         let rows: Vec<Row> = self
             .suno_library
             .iter()
+            .filter(|song| match self.suno_filter {
+                1 => song.liked,
+                2 => song.visibility.as_deref() == Some("public"),
+                3 => song.kind.as_deref() == Some("upload"),
+                _ => true,
+            })
             .filter(|song| {
                 query.is_empty()
                     || song.title.to_lowercase().contains(&query)
@@ -435,6 +672,7 @@ impl SonixApp {
                     .as_deref()
                     .map(|c| c.chars().take(10).collect())
                     .unwrap_or_default(),
+                liked: song.liked,
             })
             .collect();
         if rows.is_empty() {
@@ -447,6 +685,9 @@ impl SonixApp {
         }
         let mut play: Option<usize> = None;
         let mut import: Option<usize> = None;
+        let mut like: Option<usize> = None;
+        let mut share: Option<usize> = None;
+        let mut remix: Option<usize> = None;
         let mut last_day = String::new();
         for (index, row) in rows.iter().enumerate() {
             if row.day != last_day {
@@ -516,6 +757,39 @@ impl SonixApp {
                                             .color(palette().text_muted()),
                                     );
                                 }
+                                // **Gilla, dela och remixa** sitter på titelraden, högerställda:
+                                // fem knappar på en rad blev en klippt rad i en smal kolumn.
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        let heart = if row.liked { "♥" } else { "♡" };
+                                        if ui
+                                            .add_enabled(!pending, egui::Button::new(heart))
+                                            .on_hover_text(crate::i18n::t("Gilla"))
+                                            .clicked()
+                                        {
+                                            like = Some(index);
+                                        }
+                                        if ui
+                                            .add(egui::Button::new("🔗"))
+                                            .on_hover_text(crate::i18n::t(
+                                                "Dela — öppnar låtens sida",
+                                            ))
+                                            .clicked()
+                                        {
+                                            share = Some(index);
+                                        }
+                                        if ui
+                                            .add(egui::Button::new("✎"))
+                                            .on_hover_text(crate::i18n::t(
+                                                "Remixa — stilen och beskrivningen in i formuläret",
+                                            ))
+                                            .clicked()
+                                        {
+                                            remix = Some(index);
+                                        }
+                                    },
+                                );
                             });
                             if !row.style.is_empty() {
                                 // **Stilen är en hel prompt** (mätt: sex rader), inte en tagg —
@@ -603,6 +877,25 @@ impl SonixApp {
         if let Some(index) = import {
             let id = rows[index].id.clone();
             self.suno_import_confirmed(&id);
+        }
+        if let Some(index) = like {
+            // Raden i biblioteket, inte i den filtrerade listan: index pekar på `rows`.
+            let id = rows[index].id.clone();
+            if let Some(pos) = self.suno_library.iter().position(|song| song.id == id) {
+                self.suno_toggle_like(pos);
+            }
+        }
+        if let Some(index) = share {
+            let id = rows[index].id.clone();
+            if let Some(pos) = self.suno_library.iter().position(|song| song.id == id) {
+                self.suno_share(pos);
+            }
+        }
+        if let Some(index) = remix {
+            let id = rows[index].id.clone();
+            if let Some(pos) = self.suno_library.iter().position(|song| song.id == id) {
+                self.suno_remix(pos);
+            }
         }
     }
 
@@ -714,8 +1007,33 @@ impl SonixApp {
         }
         let slots: SunoSlots = crate::ui::app::suno_form::slots(&self.suno_form);
         let width = ui.available_width();
+        // **Samma växel som Sunos:** Enkel visar det man skriver, Avancerat fäller ut
+        // "Fler val". Standard är Avancerat — ingenting göms för den som redan vant sig.
+        ui.horizontal(|ui| {
+            for (advanced, label) in [(false, "Enkel"), (true, "Avancerat")] {
+                let active = self.suno_advanced == advanced;
+                let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_XS);
+                // Aktiv = orange botten med mörk text; panelgrått på panelgrått gick inte att
+                // läsa (mätt på skärmdump: bara den inaktiva syntes).
+                let text = if active {
+                    text.strong().color(palette().bg())
+                } else {
+                    text.color(palette().text_muted())
+                };
+                let fill = if active {
+                    palette().orange()
+                } else {
+                    egui::Color32::TRANSPARENT
+                };
+                if ui.add(egui::Button::new(text).fill(fill)).clicked() {
+                    self.suno_advanced = advanced;
+                }
+            }
+        });
+        ui.add_space(4.0);
         ui.horizontal_top(|ui| {
-            ui.allocate_ui(Vec2::new(width * 0.55 - 8.0, 0.0), |ui| {
+            let form_width = if self.suno_advanced { width * 0.55 - 8.0 } else { width - 8.0 };
+            ui.allocate_ui(Vec2::new(form_width, 0.0), |ui| {
                 ui.vertical(|ui| {
                     ui.label(
                         RichText::new(crate::i18n::t("✍ Skriv låten"))
@@ -834,6 +1152,9 @@ impl SonixApp {
             ui.separator();
             ui.allocate_ui(Vec2::new(width * 0.42 - 8.0, 0.0), |ui| {
                 ui.vertical(|ui| {
+                    if !self.suno_advanced {
+                        return;
+                    }
                     ui.label(
                         RichText::new(crate::i18n::t("⚙ Fler val"))
                             .strong()

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Spelaren längst ned i Suno-vyn.** En hämtad låt spelas i appen genom den egna motorn —
+  titel, tid, vågform med det spelade läget i orange, stopp — i stället för att öppnas i VLC.
+  Går filen inte att avkoda faller den tillbaka på systemspelaren och säger det.
+- **Låtar / Tal / Korta ljud**, som Sunos tre flikar. Tal och korta ljud har egna verktyg på
+  servern (`speech-create`, `sounds-create`); deras formulär byggs ur serverns scheman, inte ur
+  gissningar, och Skapa-knappen skickar till rätt verktyg.
+- **Filterpillren** Alla / ♥ Gillade / Publika / Uppladdningar över arbetsytan — lokalt, inga
+  serverfrågor.
+- **♥ Gilla, 🔗 Dela och ✎ Remixa** på varje rad. Gilla går via serverns `audio-like`/
+  `audio-unlike`, Dela öppnar låtens egen sida, Remixa tar stilen och beskrivningen in i
+  formuläret.
+- **Enkel/Avancerat-växel** i Skapa-rutan: Enkel döljer "Fler val" och ger formuläret hela
+  bredden.
+
 ### Changed
 - **Suno-ytan är omgjord till tre kolumner, som Sunos egen skaparsida:** menyn till vänster,
   formuläret i mitten med **Skapa-knappen i full bredd längst ned**, och **arbetsytan alltid
