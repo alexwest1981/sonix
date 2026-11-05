@@ -46,6 +46,15 @@ const CACHE_FRAMES: usize = 8;
 const DECODE_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(test)]
 const DECODE_TIMEOUT: Duration = Duration::from_secs(120);
+/// **Hur länge ett prov väntar på sin första bildruta.**
+///
+/// Två sekunder räckte när provet kördes ensamt, men i hela sviten startar ~1 400 prov
+/// samtidigt och varje videoprov drar igång en egen ffmpeg — då kom ingen bildruta alls på
+/// två sekunder och provet föll på sin egen tidsgräns, inte på koden (mätt 2026-11-05: "no
+/// first frame" i två hela sviter i rad). Väntan kostar ingenting när dekodern är snabb: den
+/// återvänder så fort bildrutan finns.
+#[cfg(test)]
+const FIRST_FRAME: Duration = Duration::from_secs(20);
 /// stderr of a failing ffmpeg is a diagnostic line, not a log — keep a human amount.
 const MAX_STDERR: usize = 4096;
 
@@ -635,7 +644,7 @@ mod tests {
         let mut play = Playback::new(&fx.path, info);
         play.start(0.0).expect("start");
         // Let the child get going: the point is contention, not a cold pipe.
-        assert!(next_frame(&mut play, Duration::from_secs(2)).is_some(), "no first frame");
+        assert!(next_frame(&mut play, FIRST_FRAME).is_some(), "no first frame");
 
         let started = Instant::now();
         for _ in 0..1000 {
@@ -657,10 +666,10 @@ mod tests {
         let info = probe(&fx.path).expect("probe");
         let mut play = Playback::new(&fx.path, info);
         play.start(0.0).expect("start");
-        let before = next_frame(&mut play, Duration::from_secs(2)).expect("a frame before the seek");
+        let before = next_frame(&mut play, FIRST_FRAME).expect("a frame before the seek");
 
         play.seek(2.5).expect("seek");
-        let after = next_frame(&mut play, Duration::from_secs(2)).expect("a frame after the seek");
+        let after = next_frame(&mut play, FIRST_FRAME).expect("a frame after the seek");
         let diff = mean_abs_diff(&before.rgb, &after.rgb);
         println!("mean abs difference across the seek: {diff:.2} levels");
         assert!(
@@ -704,7 +713,7 @@ mod tests {
         play.start(0.0).expect("start");
         let pid = play.pid().expect("a running decoder");
         assert!(proc_exists(pid), "/proc/{pid} should exist while playing");
-        assert!(next_frame(&mut play, Duration::from_secs(2)).is_some(), "no first frame");
+        assert!(next_frame(&mut play, FIRST_FRAME).is_some(), "no first frame");
 
         play.stop();
         let alive = proc_exists(pid);
