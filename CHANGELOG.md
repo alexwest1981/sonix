@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Suno-inloggningen bor i Inställningar → AI och sker tyst vid start.** Appen kontrollerar
+  sparade tokens i bakgrunden när den startar och förnyar access-token ur refresh-token —
+  **utan att öppna en webbläsare**. Går det inte står det "inte inloggad" i inställningarna, och
+  inloggning är ett uttryckligt val där. Alla bakgrundsanrop använder `connect_cached()`, så ett
+  klick i biblioteket kan aldrig längre starta en inloggningsflik mitt i arbetet.
+
+### Fixed
+- **En låt som redan hämtats kostade en nedladdningskredit varje gång man lyssnade på den.**
+  Biblioteksraden hämtade om filen varje gång, trots att den låg på disk; nu spelas den lokala
+  filen och knappen säger *Spela upp* i stället för *Lyssna — 1 kredit*. Samma regel som
+  alternativflikarna har haft hela tiden.
+- **Videoproven föll i hela sviten på sin egen tidsgräns** ("no first frame" på 2 s medan
+  ~1 400 prov startar samtidigt). Väntan på första bildrutan är 20 s i testläge; den kostar
+  ingenting när dekodern är snabb.
+
 ## [0.9.239] — 2026-11-04
 
 ### Added

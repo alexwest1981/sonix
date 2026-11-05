@@ -664,6 +664,11 @@ pub struct SonixApp {
     pub suno_playlists: Vec<crate::audio::suno::SunoPlaylist>,
     pub suno_workspaces: Vec<crate::audio::suno::SunoWorkspace>,
     pub suno_account: Option<crate::audio::suno::SunoAccount>,
+    /// **Inloggad eller inte.** Sätts av den tysta kontrollen vid start och av ett uttryckligt
+    /// val i inställningarna — aldrig av en webbläsare som öppnas av sig själv.
+    pub suno_signed_in: bool,
+    /// Var den senaste anslutningen tyst (starten) eller uttrycklig (knappen)?
+    pub suno_silent: bool,
     /// Song id whose download is waiting for a credit confirmation.
     pub suno_credit_song: Option<String>,
     pub suno_library_query: String,
@@ -1418,6 +1423,8 @@ impl SonixApp {
             suno_account: None,
             suno_credit_song: None,
             suno_library_query: String::new(),
+            suno_signed_in: false,
+            suno_silent: false,
             suno_tools: Vec::new(),
             suno_last: None,
             suno_pending: None,

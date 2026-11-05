@@ -716,8 +716,60 @@ fn saved_clip_file(clips: &[crate::ui::app::SunoClip], id: &str) -> Option<std::
 }
 
 impl SonixApp {
-    /// Signs in on a background thread: `connect()` opens the browser and blocks until the
-    /// redirect arrives, which would freeze the UI thread.
+    /// **Det panelen behöver veta om en session.** Ett ställe, så den tysta starten och ett
+    /// uttryckligt "logga in" ger panelen samma svar.
+    fn suno_connected_task(
+        session: &mut crate::audio::suno::SunoSession,
+    ) -> Result<SunoTask, String> {
+        let tools: Vec<String> = session.tools().iter().map(|t| t.name.clone()).collect();
+        let tool_name = session.generation_tool().map(|t| t.name.clone());
+        let schema = session.generation_schema();
+        let voice_param = session.voice_param();
+        // Voices are best-effort: a server without one is a normal beta surface, not an error.
+        let voices = match session.voices() {
+            Ok(list) => list.into_iter().map(|v| (v.id, v.name)).collect::<Vec<_>>(),
+            Err(e) => {
+                println!("suno: voices unavailable ({e})");
+                Vec::new()
+            }
+        };
+        let voice_hint = session.voices_hint();
+        Ok(SunoTask::Connected {
+            tools,
+            tool_name,
+            schema,
+            voices,
+            voice_hint,
+            voice_param,
+        })
+    }
+
+    /// **Ansluter med de sparade tokensen — och öppnar aldrig en webbläsare.**
+    ///
+    /// Körs en gång vid start. En app som öppnar en flik när man startar den är en webbläsare,
+    /// inte en DAW (Alex 2026-11-05). Access-token lever en timme; refresh-token förnyas här
+    /// utan att någon sida behöver visas. Går det inte är svaret "inte inloggad" i
+    /// inställningarna — inloggning är ett uttryckligt val, inte något som händer av sig själv.
+    pub fn suno_connect_silently(&mut self) {
+        if self.suno_pending.is_some() {
+            return;
+        }
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_silent = true;
+        self.suno_status = crate::i18n::t("☀ Kontrollerar Suno-inloggningen…").to_string();
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect_cached().and_then(|mut session| {
+                SonixApp::suno_connected_task(&mut session)
+            });
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Signs in on a background thread: `connect_with_slot` opens the browser and blocks until
+    /// the redirect arrives, which would freeze the UI thread.
     pub fn suno_connect(&mut self) {
         if self.suno_pending.is_some() {
             self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
@@ -725,42 +777,16 @@ impl SonixApp {
         }
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
+        self.suno_silent = false;
         self.suno_status = crate::i18n::t(
             "☀ Connecting — finish the sign-in in the browser, then come back here.",
         )
         .to_string();
         let slot_url = self.suno_login_url.clone();
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect_with_slot(Some(slot_url)).and_then(
-                |mut session| {
-                    let tools: Vec<String> =
-                        session.tools().iter().map(|t| t.name.clone()).collect();
-                    let tool_name = session.generation_tool().map(|t| t.name.clone());
-                    let schema = session.generation_schema();
-                    let voice_param = session.voice_param();
-                    // Voices are best-effort: a server without one is a normal beta surface, not
-                    // an error, and the hint says what is missing.
-                    let voices = match session.voices() {
-                        Ok(list) => list
-                            .into_iter()
-                            .map(|v| (v.id, v.name))
-                            .collect::<Vec<_>>(),
-                        Err(e) => {
-                            println!("suno: voices unavailable ({e})");
-                            Vec::new()
-                        }
-                    };
-                    let voice_hint = session.voices_hint();
-                    Ok(SunoTask::Connected {
-                        tools,
-                        tool_name,
-                        schema,
-                        voices,
-                        voice_hint,
-                        voice_param,
-                    })
-                },
-            );
+            let result =
+                crate::audio::suno::SunoSession::connect_with_slot(Some(slot_url))
+                    .and_then(|mut session| SonixApp::suno_connected_task(&mut session));
             if let Ok(mut guard) = slot.lock() {
                 *guard = Some(result);
             }
@@ -838,7 +864,7 @@ impl SonixApp {
         self.suno_pending = Some(slot.clone());
         self.suno_status = crate::i18n::t("⏳ Suno is creating the two takes…").to_string();
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
+            let result = crate::audio::suno::SunoSession::connect_cached().and_then(|mut session| {
                 match tool {
                     Some(name) => session.generate_named(name, args),
                     None => session.generate_with(args),
@@ -863,7 +889,7 @@ impl SonixApp {
         self.suno_status = crate::i18n::t("⏳ Reading your Suno library…").to_string();
         std::thread::spawn(move || {
             let filter = Some(query.as_str()).filter(|q| !q.is_empty());
-            let result = crate::audio::suno::SunoSession::connect()
+            let result = crate::audio::suno::SunoSession::connect_cached()
                 .and_then(|mut session| session.library(filter, 50))
                 .map(SunoTask::Library);
             if let Ok(mut guard) = slot.lock() {
@@ -881,7 +907,7 @@ impl SonixApp {
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
+            let result = crate::audio::suno::SunoSession::connect_cached().and_then(|mut session| {
                 let mut songs = Vec::new();
                 for id in &ids {
                     if let Ok(song) = session.retrieve_song(id) {
@@ -915,7 +941,7 @@ impl SonixApp {
         self.suno_pending = Some(slot.clone());
         self.suno_status = crate::i18n::t("📥 Hämtar ljudet — en kredit.").to_string();
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect()
+            let result = crate::audio::suno::SunoSession::connect_cached()
                 .and_then(|mut session| session.download_song_confirmed(&id))
                 .map(SunoTask::Generated);
             if let Ok(mut guard) = slot.lock() {
@@ -932,12 +958,22 @@ impl SonixApp {
         if self.suno_pending.is_some() {
             return;
         }
+        // **Redan hämtad = gratis.** Det är *hämtningen* som kostar en nedladdningskredit, inte
+        // lyssnandet — men den här vägen hämtade om låten varje gång, även en som redan låg på
+        // disk. Samma regel som alternativflikarna har haft hela tiden (Alex 2026-11-05:
+        // "det kostar tokens för att ens lyssna på en redan färdig låt i biblioteket").
+        if let Some(file) = saved_clip_file(&self.suno_clips, &song.id) {
+            crate::platform::open_path(&file.to_string_lossy());
+            self.suno_status =
+                crate::tstatus!("🎧 Spelar '{}' från disken — inget hämtat, ingen kredit", song.title);
+            return;
+        }
         self.suno_library_pending = Some(index);
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
         self.suno_status = crate::tstatus!("🎧 Hämtar {} — en kredit…", song.title);
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect()
+            let result = crate::audio::suno::SunoSession::connect_cached()
                 .and_then(|mut session| session.download_song_confirmed(&song.id))
                 .map(SunoTask::Generated);
             if let Ok(mut guard) = slot.lock() {
@@ -1020,7 +1056,7 @@ impl SonixApp {
         self.suno_status = crate::i18n::t("⏳ Downloading — one credit.").to_string();
         let id = id.to_string();
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect()
+            let result = crate::audio::suno::SunoSession::connect_cached()
                 .and_then(|mut session| session.download_song_confirmed(&id))
                 .map(SunoTask::Generated);
             if let Ok(mut guard) = slot.lock() {
@@ -1038,7 +1074,7 @@ impl SonixApp {
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
+            let result = crate::audio::suno::SunoSession::connect_cached().and_then(|mut session| {
                 Ok(match which {
                     SunoMeta::Playlists => SunoTask::Playlists(session.playlists()?),
                     SunoMeta::Workspaces => SunoTask::Workspaces(session.workspaces()?),
@@ -1088,12 +1124,19 @@ impl SonixApp {
                 self.suno_voice_hint = voice_hint;
                 self.suno_voice_param = voice_param;
                 self.suno_voice_choice = 0;
+                self.suno_signed_in = true;
                 let field_count = self.suno_form.len();
-                self.suno_status = crate::tstatus!(
-                    "✔ Signed in — {} fields from the server's own schema, {} voices.",
-                    field_count,
-                    self.suno_voices.len()
-                );
+                // Vid start räcker ett kort besked: en rad som skvallrar om schemafält hör
+                // till det uttryckliga inloggningen, inte till uppstarten.
+                self.suno_status = if self.suno_silent {
+                    crate::i18n::t("☀ Inloggad på Suno").to_string()
+                } else {
+                    crate::tstatus!(
+                        "✔ Signed in — {} fields from the server's own schema, {} voices.",
+                        field_count,
+                        self.suno_voices.len()
+                    )
+                };
                 if let Some(hint) = self.suno_voice_hint.clone() {
                     println!("{hint}");
                 }
@@ -1125,7 +1168,17 @@ impl SonixApp {
                 self.suno_status = crate::tstatus!("☀ {} songs in the library.", songs.len());
                 self.suno_library = songs;
             }
-            Err(error) => self.suno_status = error,
+            Err(error) => {
+                self.suno_signed_in = false;
+                // **Ett misslyckande vid start får inte se ut som att appen väntar på en
+                // webbläsare.** Den säger var inloggningen bor, och ingenting öppnas.
+                self.suno_status = if self.suno_silent {
+                    crate::i18n::t("☀ Inte inloggad på Suno — logga in i Inställningar → AI")
+                        .to_string()
+                } else {
+                    error
+                };
+            }
         }
     }
 

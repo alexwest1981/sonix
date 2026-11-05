@@ -1500,6 +1500,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             crate::ui::fonts::install(cc);
             let mut app = SonixApp::new(engine);
             app.web = web;
+            // **Suno-inloggningen kontrolleras i bakgrunden vid start — utan webbläsare.**
+            // Sparade tokens används, access-token förnyas ur refresh-token om den gått ut.
+            // Går det inte står det i inställningarna; ingenting öppnas av sig själv.
+            app.suno_connect_silently();
             // Fas 6.0: berätta en gång om något flyttades eller läses från en
             // äldre plats — annars undrar användaren var filerna tog vägen.
             if !path_notes.is_empty() {

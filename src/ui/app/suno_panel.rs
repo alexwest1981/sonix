@@ -76,14 +76,25 @@ impl SonixApp {
             if self.suno_pending.is_some() {
                 ui.spinner();
             }
+            // **Inloggningen bor i Inställningar → AI.** Panelen visar bara läget och kan
+            // kontrollera det igen — den öppnar aldrig en webbläsare av sig själv.
+            let (state, colour) = if self.suno_signed_in {
+                (crate::i18n::t("☀ inloggad"), palette().green())
+            } else {
+                (
+                    crate::i18n::t("☀ inte inloggad — Inställningar → AI"),
+                    palette().text_muted(),
+                )
+            };
+            ui.label(RichText::new(state).size(Theme::FONT_S).color(colour));
             if ui
                 .add_enabled(
                     self.suno_pending.is_none(),
-                    egui::Button::new(crate::i18n::t("🔑 Logga in / anslut")),
+                    egui::Button::new(crate::i18n::t("🔄 Kontrollera igen")),
                 )
                 .clicked()
             {
-                self.suno_connect();
+                self.suno_connect_silently();
             }
             // Skapa-knappen sitter i huvudraden: den får aldrig hamna under vikningen.
             if ui
@@ -712,7 +723,7 @@ impl SonixApp {
         });
         ui.separator();
         // Raderna kopieras ut först: knappen muterar appen, och listan får inte lånas under tiden.
-        let rows: Vec<(String, String, String)> = self
+        let rows: Vec<(String, String, String, bool)> = self
             .suno_library
             .iter()
             .map(|song| {
@@ -721,12 +732,23 @@ impl SonixApp {
                     .duration_secs
                     .map(|d| format!(" {d:.0}s"))
                     .unwrap_or_default();
-                (song.title.clone(), format!("{stems}{length}"), song.id.clone())
+                // **Ligger låten redan på disk kostar den inget att lyssna på.** Knappen ska
+                // säga det, så ingen betalar för något de redan har.
+                let has_file = self
+                    .suno_clips
+                    .iter()
+                    .any(|clip| clip.id == song.id && clip.file.as_ref().is_some_and(|f| f.exists()));
+                (
+                    song.title.clone(),
+                    format!("{stems}{length}"),
+                    song.id.clone(),
+                    has_file,
+                )
             })
             .collect();
         let mut import: Option<usize> = None;
         let mut play: Option<usize> = None;
-        for (index, (title, meta, index_id)) in rows.iter().enumerate() {
+        for (index, (title, meta, index_id, has_file)) in rows.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(title).size(Theme::FONT_S));
                 ui.label(
@@ -734,9 +756,19 @@ impl SonixApp {
                         .size(Theme::FONT_XS)
                         .color(palette().text_muted()),
                 );
-                // Both downloads cost a credit: each button states it and asks for its own
-                // confirmation before anything is fetched.
-                if self.suno_spend_button(
+                // **En hämtning kostar en kredit — en uppspelning av en fil som redan ligger
+                // på disk kostar ingenting.** Låten hämtas aldrig två gånger.
+                if *has_file {
+                    if ui
+                        .add_enabled(!pending, egui::Button::new(crate::i18n::t("🎧 Spela upp")))
+                        .on_hover_text(crate::i18n::t(
+                            "Filen ligger redan på disk — ingen kredit går åt",
+                        ))
+                        .clicked()
+                    {
+                        play = Some(index);
+                    }
+                } else if self.suno_spend_button(
                     ui,
                     !pending,
                     SunoSpend::Play,

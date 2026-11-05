@@ -373,6 +373,25 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "☀ Inloggad på Suno" => "☀ Signed in to Suno",
+        "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Not signed in to Suno — sign in under Settings → AI",
+        "☀ Kontrollerar Suno-inloggningen…" => "☀ Checking the Suno sign-in…",
+        "☀ Suno" => "☀ Suno",
+        "inloggad" => "signed in",
+        "inte inloggad" => "not signed in",
+        "Status:" => "Status:",
+        "🔑 Logga in på Suno" => "🔑 Sign in to Suno",
+        "Logga ut" => "Sign out",
+        "☀ Utloggad från Suno" => "☀ Signed out of Suno",
+        "{} krediter kvar" => "{} credits left",
+        "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start." => "Opens the browser once for the sign-in. After that the app renews the session itself at start.",
+        "☀ inloggad" => "☀ signed in",
+        "☀ inte inloggad — Inställningar → AI" => "☀ not signed in — Settings → AI",
+        "🔄 Kontrollera igen" => "🔄 Check again",
+
+        "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit" => "🎧 Playing '{}' from disk — nothing fetched, no credit",
+        "Filen ligger redan på disk — ingen kredit går åt" => "The file is already on disk — no credit is spent",
+
         "Ta bort {} spår" => "Remove {} tracks",
         "🗑 Raderade {} spår." => "🗑 Removed {} tracks.",
 
@@ -3072,6 +3091,25 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "☀ Inloggad på Suno" => "☀ Logget ind på Suno",
+        "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Ikke logget ind på Suno — log ind i Indstillinger → AI",
+        "☀ Kontrollerar Suno-inloggningen…" => "☀ Kontrollerer Suno-login…",
+        "☀ Suno" => "☀ Suno",
+        "inloggad" => "logget ind",
+        "inte inloggad" => "ikke logget ind",
+        "Status:" => "Status:",
+        "🔑 Logga in på Suno" => "🔑 Log ind på Suno",
+        "Logga ut" => "Log ud",
+        "☀ Utloggad från Suno" => "☀ Logget ud fra Suno",
+        "{} krediter kvar" => "{} kreditter tilbage",
+        "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start." => "Åbner browseren én gang til login. Derefter fornyer appen selv sessionen ved start.",
+        "☀ inloggad" => "☀ logget ind",
+        "☀ inte inloggad — Inställningar → AI" => "☀ ikke logget ind — Indstillinger → AI",
+        "🔄 Kontrollera igen" => "🔄 Kontroller igen",
+
+        "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit" => "🎧 Afspiller '{}' fra disken — intet hentet, ingen kredit",
+        "Filen ligger redan på disk — ingen kredit går åt" => "Filen ligger allerede på disken — ingen kredit bruges",
+
         "Ta bort {} spår" => "Fjern {} spor",
         "🗑 Raderade {} spår." => "🗑 Fjernede {} spor.",
 
@@ -5729,6 +5767,25 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "☀ Inloggad på Suno" => "☀ Logget inn på Suno",
+        "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Ikke logget inn på Suno — logg inn i Innstillinger → AI",
+        "☀ Kontrollerar Suno-inloggningen…" => "☀ Sjekker Suno-innloggingen…",
+        "☀ Suno" => "☀ Suno",
+        "inloggad" => "logget inn",
+        "inte inloggad" => "ikke logget inn",
+        "Status:" => "Status:",
+        "🔑 Logga in på Suno" => "🔑 Logg inn på Suno",
+        "Logga ut" => "Logg ut",
+        "☀ Utloggad från Suno" => "☀ Logget ut fra Suno",
+        "{} krediter kvar" => "{} kreditter igjen",
+        "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start." => "Åpner nettleseren én gang for innloggingen. Etter det fornyer appen sesjonen selv ved start.",
+        "☀ inloggad" => "☀ logget inn",
+        "☀ inte inloggad — Inställningar → AI" => "☀ ikke logget inn — Innstillinger → AI",
+        "🔄 Kontrollera igen" => "🔄 Sjekk igjen",
+
+        "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit" => "🎧 Spiller '{}' fra disken — ingenting hentet, ingen kreditt",
+        "Filen ligger redan på disk — ingen kredit går åt" => "Filen ligger allerede på disk — ingen kreditt brukes",
+
         "Ta bort {} spår" => "Fjern {} spor",
         "🗑 Raderade {} spår." => "🗑 Fjernet {} spor.",
 
@@ -8386,6 +8443,25 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "☀ Inloggad på Suno" => "☀ Bei Suno angemeldet",
+        "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Nicht bei Suno angemeldet — unter Einstellungen → KI anmelden",
+        "☀ Kontrollerar Suno-inloggningen…" => "☀ Suno-Anmeldung wird geprüft…",
+        "☀ Suno" => "☀ Suno",
+        "inloggad" => "angemeldet",
+        "inte inloggad" => "nicht angemeldet",
+        "Status:" => "Status:",
+        "🔑 Logga in på Suno" => "🔑 Bei Suno anmelden",
+        "Logga ut" => "Abmelden",
+        "☀ Utloggad från Suno" => "☀ Von Suno abgemeldet",
+        "{} krediter kvar" => "{} Guthaben übrig",
+        "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start." => "Öffnet den Browser einmal für die Anmeldung. Danach erneuert die App die Sitzung beim Start selbst.",
+        "☀ inloggad" => "☀ angemeldet",
+        "☀ inte inloggad — Inställningar → AI" => "☀ nicht angemeldet — Einstellungen → KI",
+        "🔄 Kontrollera igen" => "🔄 Erneut prüfen",
+
+        "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit" => "🎧 Spielt '{}' von der Platte — nichts geladen, kein Guthaben",
+        "Filen ligger redan på disk — ingen kredit går åt" => "Die Datei liegt bereits auf der Platte — kein Guthaben wird verbraucht",
+
         "Ta bort {} spår" => "{} Spuren löschen",
         "🗑 Raderade {} spår." => "🗑 {} Spuren gelöscht.",
 
@@ -11043,6 +11119,25 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "☀ Inloggad på Suno" => "☀ Sesión iniciada en Suno",
+        "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Sin sesión en Suno — inicia sesión en Ajustes → IA",
+        "☀ Kontrollerar Suno-inloggningen…" => "☀ Comprobando la sesión de Suno…",
+        "☀ Suno" => "☀ Suno",
+        "inloggad" => "sesión iniciada",
+        "inte inloggad" => "sin sesión",
+        "Status:" => "Estado:",
+        "🔑 Logga in på Suno" => "🔑 Iniciar sesión en Suno",
+        "Logga ut" => "Cerrar sesión",
+        "☀ Utloggad från Suno" => "☀ Sesión cerrada en Suno",
+        "{} krediter kvar" => "{} créditos restantes",
+        "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start." => "Abre el navegador una vez para iniciar sesión. Después la app renueva la sesión sola al arrancar.",
+        "☀ inloggad" => "☀ sesión iniciada",
+        "☀ inte inloggad — Inställningar → AI" => "☀ sin sesión — Ajustes → IA",
+        "🔄 Kontrollera igen" => "🔄 Comprobar de nuevo",
+
+        "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit" => "🎧 Reproduciendo '{}' desde el disco — nada descargado, sin crédito",
+        "Filen ligger redan på disk — ingen kredit går åt" => "El archivo ya está en el disco — no se gasta ningún crédito",
+
         "Ta bort {} spår" => "Eliminar {} pistas",
         "🗑 Raderade {} spår." => "🗑 Eliminadas {} pistas.",
 
@@ -13700,6 +13795,25 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "☀ Inloggad på Suno" => "☀ Connecté à Suno",
+        "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Non connecté à Suno — connecte-toi dans Réglages → IA",
+        "☀ Kontrollerar Suno-inloggningen…" => "☀ Vérification de la connexion Suno…",
+        "☀ Suno" => "☀ Suno",
+        "inloggad" => "connecté",
+        "inte inloggad" => "non connecté",
+        "Status:" => "État :",
+        "🔑 Logga in på Suno" => "🔑 Se connecter à Suno",
+        "Logga ut" => "Se déconnecter",
+        "☀ Utloggad från Suno" => "☀ Déconnecté de Suno",
+        "{} krediter kvar" => "{} crédits restants",
+        "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start." => "Ouvre le navigateur une fois pour la connexion. Ensuite l'app renouvelle la session seule au démarrage.",
+        "☀ inloggad" => "☀ connecté",
+        "☀ inte inloggad — Inställningar → AI" => "☀ non connecté — Réglages → IA",
+        "🔄 Kontrollera igen" => "🔄 Vérifier à nouveau",
+
+        "🎧 Spelar '{}' från disken — inget hämtat, ingen kredit" => "🎧 Lecture de '{}' depuis le disque — rien téléchargé, aucun crédit",
+        "Filen ligger redan på disk — ingen kredit går åt" => "Le fichier est déjà sur le disque — aucun crédit n'est utilisé",
+
         "Ta bort {} spår" => "Supprimer {} pistes",
         "🗑 Raderade {} spår." => "🗑 {} pistes supprimées.",
 

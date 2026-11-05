@@ -77,6 +77,84 @@ pub(crate) fn render_ai_settings_modal(&mut self, ctx: &egui::Context) {
             });
 
             ui.add_space(6.0);
+            // **Suno-inloggningen bor i inställningarna.** Den kontrolleras automatiskt vid
+            // start (sparade tokens, aldrig en webbläsare); här syns läget och här finns det
+            // enda stället som får öppna en webbläsare — ett uttryckligt val (Alex 2026-11-05).
+            ui.group(|ui| {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("☀ Suno"))
+                        .strong()
+                        .color(crate::ui::theme::palette().orange()),
+                );
+                ui.horizontal(|ui| {
+                    let (text, colour) = if self.suno_signed_in {
+                        (crate::i18n::t("inloggad"), crate::ui::theme::palette().green())
+                    } else {
+                        (
+                            crate::i18n::t("inte inloggad"),
+                            crate::ui::theme::palette().text_muted(),
+                        )
+                    };
+                    ui.label(crate::i18n::t("Status:"));
+                    ui.label(egui::RichText::new(text).color(colour));
+                    if self.suno_pending.is_some() {
+                        ui.spinner();
+                    }
+                });
+                if let Some(account) = self.suno_account.as_ref()
+                    && let Some(credits) = account.credits
+                {
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!("{} krediter kvar", credits as i64))
+                            .size(Theme::FONT_XS)
+                            .color(crate::ui::theme::palette().text_muted()),
+                    );
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.suno_pending.is_none(),
+                            egui::Button::new(crate::i18n::t("🔑 Logga in på Suno")),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Öppnar webbläsaren en gång för inloggningen. Efter det sköter appen förnyelsen själv vid start.",
+                        ))
+                        .clicked()
+                    {
+                        self.suno_connect();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.suno_pending.is_none() && self.suno_signed_in,
+                            egui::Button::new(crate::i18n::t("Logga ut")),
+                        )
+                        .clicked()
+                    {
+                        match crate::audio::suno_auth::SunoOAuth::new().forget() {
+                            Ok(()) => {
+                                self.suno_signed_in = false;
+                                self.suno_status =
+                                    crate::i18n::t("☀ Utloggad från Suno").to_string();
+                            }
+                            Err(e) => {
+                                self.status_message =
+                                    crate::tstatus!("⚠ Kunde inte logga ut: {}", e)
+                            }
+                        }
+                    }
+                });
+                // Pågår en inloggning visas adressen: en ruta som säger "gå till webbläsaren"
+                // utan att visa vart är en återvändsgränd.
+                if let Some(url) = self.suno_login_url.lock().ok().and_then(|g| g.clone()) {
+                    ui.label(
+                        egui::RichText::new(url)
+                            .size(Theme::FONT_XS)
+                            .color(crate::ui::theme::palette().cyan()),
+                    );
+                }
+            });
+
+            ui.add_space(6.0);
             let ready = self.ai_assistant.config.is_ready();
             ui.label(
                 egui::RichText::new(if ready {

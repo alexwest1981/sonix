@@ -2709,3 +2709,98 @@ mod tests {
         assert_eq!(param.as_deref(), Some("voice_id"));
     }
 }
+
+#[cfg(test)]
+mod live_probe {
+    use super::*;
+
+    /// **Bara för hand, med Alex inloggning:** `SONIX_SUNO_PROBE=1 cargo test live_probe -- --ignored --nocapture`.
+    /// Mäter vilka verktyg servern har, vad en listning ger och om en låt har en URL som går att
+    /// spela utan att någon kredit går åt. Raderas efter mätningen.
+    #[test]
+    #[ignore]
+    fn what_a_listed_song_carries_and_what_a_listen_would_cost() {
+        if std::env::var("SONIX_SUNO_PROBE").is_err() {
+            return;
+        }
+        let mut session = SunoSession::connect_cached().expect("session");
+        let names: Vec<String> = session.tools().iter().map(|t| t.name.clone()).collect();
+        println!("VERKTYG ({}): {}", names.len(), names.join(", "));
+        let songs = session.library(None, 3).expect("library");
+        println!("BIBLIOTEK: {} låt(ar)", songs.len());
+        for song in &songs {
+            println!(
+                "  - id={} titel={:?} audio_urls={} stems={}",
+                song.id,
+                song.title,
+                song.audio_urls.len(),
+                song.stem_urls.len()
+            );
+        }
+        // **Vad lyssna-verktyget vill ha och vad det svarar.** Det finns ett `audio-listen` på
+        // servern; appen använder i stället `audio-download`, som kostar en kredit.
+        for name in ["audio-download", "audio-retrieve", "audio-listen", "account-usage"] {
+            match session.tool_schema(name) {
+                Some(schema) => println!("SCHEMA {name}: {schema}"),
+                None => println!("SCHEMA {name}: saknas"),
+            }
+        }
+        let before = session.call("account-usage", serde_json::json!({})).ok();
+        println!("SALDO FÖRE: {:?}", before.as_ref().map(|v| v.to_string().chars().take(400).collect::<String>()));
+        if let Some(first) = songs.first() {
+            let listen = session.call("audio-listen", serde_json::json!({ "id": first.id }));
+            match &listen {
+                Ok(reply) => {
+                    let shown: String = reply.to_string().chars().take(600).collect();
+                    println!("LYSSNA SVAR: {shown}");
+                }
+                Err(e) => println!("LYSSNA FEL: {e}"),
+            }
+            // **Kostar en hämtning något även utan `confirm`?** Svaret säger vad servern vill ha
+            // och om det finns en förhandslyssning i det.
+            match session.call("audio-download", serde_json::json!({ "id": first.id })) {
+                Ok(reply) => {
+                    let shown: String = reply.to_string().chars().take(700).collect();
+                    println!("HÄMTNING UTAN CONFIRM: {shown}");
+                }
+                Err(e) => println!("HÄMTNING UTAN CONFIRM FEL: {e}"),
+            }
+            if listen.is_ok() {
+                let waited = session.call("audio-listen-wait", serde_json::json!({ "id": first.id }));
+                match &waited {
+                    Ok(reply) => {
+                        let shown: String = reply.to_string().chars().take(600).collect();
+                        println!("LYSSNA-VÄNTA SVAR: {shown}");
+                    }
+                    Err(e) => println!("LYSSNA-VÄNTA FEL: {e}"),
+                }
+            }
+        }
+        let after = session.call("account-usage", serde_json::json!({})).ok();
+        println!("SALDO EFTER: {:?}", after.as_ref().map(|v| v.to_string().chars().take(400).collect::<String>()));
+        println!("SALDO OFÖRÄNDRAT: {}", before == after);
+        if let Some(first) = songs.first() {
+            match session.retrieve_song(&first.id) {
+                Ok(song) => {
+                    println!(
+                        "RETRIEVE: {:?} — {} audio url(s), {} stem url(s)",
+                        song.title,
+                        song.audio_urls.len(),
+                        song.stem_urls.len()
+                    );
+                    for (i, url) in song.audio_urls.iter().enumerate() {
+                        let host = url.split('/').nth(2).unwrap_or("?");
+                        let path = url.split('?').next().unwrap_or("?");
+                        println!("  audio[{i}] host={host} path={path}");
+                    }
+                    if let Some(url) = song.audio_urls.first() {
+                        // Skrivs till fil så curl kan pröva den utan att token hamnar i loggen.
+                        let _ = std::fs::write("/tmp/suno_probe_url.txt", url);
+                        println!("  url skriven till /tmp/suno_probe_url.txt");
+                    }
+                }
+                Err(e) => println!("RETRIEVE FEL: {e}"),
+            }
+        }
+    }
+}

@@ -186,6 +186,16 @@ impl SunoOAuth {
         self.login_blocking_with(port, &Pkce::new()?)
     }
 
+    /// **Glömmer inloggningen.** Tar bort tokenfilen, så nästa anslutning måste logga in igen.
+    /// En redan saknad fil är ett lyckat utfall — målet är att den inte finns.
+    pub fn forget(&self) -> Result<(), String> {
+        match std::fs::remove_file(&self.token_file) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("tar bort {}: {e}", self.token_file.display())),
+        }
+    }
+
     /// As [`Self::login_blocking`], but the sign-in URL is also handed to `url_slot` so the UI
     /// can show it. The browser is opened automatically; if that fails the address is the only
     /// way in, and a window that says "go to the browser" without showing it is a dead end.
