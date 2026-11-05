@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.239] — 2026-11-04
+
 ### Added
 - **Emoji-typsnitt i binären** (OpenMoji-black, CC BY-SA 4.0). Repot hade inga
   `FontDefinitions` alls: 134 tecken i källan saknas i egui:s inbyggda ikonfont — 83 av dem
@@ -1375,7 +1377,8 @@ audio engine; the remaining gaps are documented honestly in
   decoded).
 
 [0.9.238]: https://github.com/alexwest1981/sonix/compare/v0.9.175...v0.9.238
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.238...HEAD
+[0.9.239]: https://github.com/alexwest1981/sonix/compare/v0.9.238...v0.9.239
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.239...HEAD
 [0.9.175]: https://github.com/alexwest1981/sonix/compare/v0.9.174...v0.9.175
 [0.9.174]: https://github.com/alexwest1981/sonix/compare/v0.9.173...v0.9.174
 [0.9.173]: https://github.com/alexwest1981/sonix/compare/v0.9.167...v0.9.173
