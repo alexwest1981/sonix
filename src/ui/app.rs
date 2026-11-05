@@ -669,6 +669,16 @@ pub struct SonixApp {
     pub suno_signed_in: bool,
     /// Var den senaste anslutningen tyst (starten) eller uttrycklig (knappen)?
     pub suno_silent: bool,
+    /// **Omslagen, en textur per bildadress.** De hämtas en gång i bakgrunden; en rad som
+    /// ritas om varje bildruta får aldrig starta en ny hämtning.
+    pub suno_covers: std::collections::HashMap<String, egui::TextureHandle>,
+    /// Adresser som redan är beställda (eller misslyckats) — aldrig två hämtningar för samma bild.
+    pub suno_cover_tries: std::collections::HashSet<String>,
+    /// **Biblioteket ska läsas så snart Suno är ledigt.** Sätts när en läsning begärs medan en
+    /// annan körning pågår (t.ex. arbetsytorna direkt efter inloggningen) — annars tappas den.
+    pub suno_library_wanted: bool,
+    /// Färdigavkodade bilder från bakgrundstråden, hämtade av panelen varje bildruta.
+    pub suno_cover_rx: std::sync::Arc<std::sync::Mutex<Vec<(String, egui::ColorImage)>>>,
     /// Song id whose download is waiting for a credit confirmation.
     pub suno_credit_song: Option<String>,
     pub suno_library_query: String,
@@ -1425,6 +1435,10 @@ impl SonixApp {
             suno_library_query: String::new(),
             suno_signed_in: false,
             suno_silent: false,
+            suno_covers: std::collections::HashMap::new(),
+            suno_cover_tries: std::collections::HashSet::new(),
+            suno_library_wanted: false,
+            suno_cover_rx: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             suno_tools: Vec::new(),
             suno_last: None,
             suno_pending: None,

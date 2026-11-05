@@ -107,6 +107,14 @@ pub struct SunoSong {
     pub stem_urls: Vec<String>,
     pub duration_secs: Option<f64>,
     pub created: Option<String>,
+    /// **Radens eget omslag.** Servern skickar en bildadress per låt; panelen visar den i
+    /// stället för en tom ruta, så listan går att känna igen på en blick.
+    pub cover_url: Option<String>,
+    /// Stilen som står under titeln (`metadata.style`/`tags`).
+    pub style: Option<String>,
+    /// Beskrivningen/prompten som står under stilen (`metadata.description`).
+    pub description: Option<String>,
+    pub liked: bool,
     pub raw: Value,
 }
 
@@ -421,6 +429,10 @@ impl SunoSession {
             stem_urls: Vec::new(),
             duration_secs: None,
             created: None,
+            cover_url: None,
+            style: None,
+            description: None,
+            liked: false,
             raw: payload,
         };
         self.download_song(&song)
@@ -1241,6 +1253,7 @@ fn parse_song(v: &Value) -> Option<SunoSong> {
     urls_at(v, &mut audio_urls);
     let mut stem_urls = Vec::new();
     stems_at(v, &mut stem_urls);
+    let meta = o.get("metadata").and_then(Value::as_object);
     Some(SunoSong {
         id: text_at(o, &["id"]).unwrap_or_default(),
         title: text_at(o, &["title", "name", "prompt"]).unwrap_or_default(),
@@ -1248,6 +1261,10 @@ fn parse_song(v: &Value) -> Option<SunoSong> {
         stem_urls,
         duration_secs: duration_at(o),
         created: text_at(o, &["created", "created_at"]),
+        cover_url: text_at(o, &["cover_image_large_url", "cover_image_url"]),
+        style: meta.and_then(|m| text_at(m, &["style", "tags", "genre"])),
+        description: meta.and_then(|m| text_at(m, &["description", "prompt"])),
+        liked: o.get("liked").and_then(Value::as_bool).unwrap_or(false),
         raw: v.clone(),
     })
 }
@@ -1317,16 +1334,40 @@ fn push_strings(v: &Value, out: &mut Vec<String>) {
 /// The beta may report a length in seconds or milliseconds and does not say which. Values above
 /// 1000 are read as milliseconds — a song is minutes, so only that unit can exceed 1000.
 fn duration_at(o: &Map<String, Value>) -> Option<f64> {
-    let raw = ["duration", "length"].iter().find_map(|key| {
-        o.iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(key))
-            .and_then(|(_, v)| match v {
-                Value::Number(n) => n.as_f64(),
-                Value::String(s) => s.trim().parse::<f64>().ok(),
-                _ => None,
-            })
-    })?;
+    // **Längden ligger i `metadata`, inte på raden** (mätt mot servern 2026-11-05), så båda
+    // nivåerna läses — annars står det ingen speltid alls i listan.
+    let mut levels: Vec<&Map<String, Value>> = vec![o];
+    if let Some(meta) = o.get("metadata").and_then(Value::as_object) {
+        levels.push(meta);
+    }
+    let mut raw = None;
+    for level in levels {
+        raw = ["duration", "length"].iter().find_map(|key| {
+            level
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .and_then(|(_, v)| match v {
+                    Value::Number(n) => n.as_f64(),
+                    Value::String(s) => secs_from_text(s.trim()),
+                    _ => None,
+                })
+        });
+        if raw.is_some() {
+            break;
+        }
+    }
+    let raw = raw?;
     Some(if raw > 1000.0 { raw / 1000.0 } else { raw })
+}
+
+/// `"230.5"` eller `"3:50"` — servern kan skicka längden som text.
+fn secs_from_text(text: &str) -> Option<f64> {
+    if let Some((minutes, seconds)) = text.split_once(':') {
+        let minutes: f64 = minutes.trim().parse().ok()?;
+        let seconds: f64 = seconds.trim().parse().ok()?;
+        return Some(minutes * 60.0 + seconds);
+    }
+    text.parse::<f64>().ok()
 }
 
 /// The first cursor-like value anywhere in the reply, top level first, also through an MCP
@@ -2484,7 +2525,11 @@ mod tests {
             stem_urls: Vec::new(),
             duration_secs: Some(201.0),
             created: Some("2026-10-30T09:00:00Z".to_string()),
-            raw: json!({ "id": "song-9", "title": "Row Song" }),
+                        cover_url: None,
+            style: None,
+            description: None,
+            liked: false,
+raw: json!({ "id": "song-9", "title": "Row Song" }),
         };
         let dir = tmp_dir("dl-row");
         let saved = session
@@ -2688,7 +2733,11 @@ mod tests {
             stem_urls: Vec::new(),
             duration_secs: None,
             created: None,
-            raw: json!({}),
+                        cover_url: None,
+            style: None,
+            description: None,
+            liked: false,
+raw: json!({}),
         };
         let error = session.download_song(&song).expect_err("must ask first");
         println!("fel: {error}");
@@ -2779,6 +2828,26 @@ mod live_probe {
         let after = session.call("account-usage", serde_json::json!({})).ok();
         println!("SALDO EFTER: {:?}", after.as_ref().map(|v| v.to_string().chars().take(400).collect::<String>()));
         println!("SALDO OFÖRÄNDRAT: {}", before == after);
+        // **Vilka fält bär en riktig rad?** Panelen ska visa omslag, beskrivning och datum om
+        // servern har dem — annars gissar vi fram tomma kort.
+        if let Some(first) = songs.first() {
+            fn keys(v: &serde_json::Value, depth: usize, out: &mut Vec<String>) {
+                match v {
+                    serde_json::Value::Object(map) => {
+                        for (k, val) in map {
+                            out.push(format!("{}{}", " ".repeat(depth), k));
+                            if depth < 2 {
+                                keys(val, depth + 1, out);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut out = Vec::new();
+            keys(&first.raw, 0, &mut out);
+            println!("RADENS FÄLT: {}", out.join(" | "));
+        }
         if let Some(first) = songs.first() {
             match session.retrieve_song(&first.id) {
                 Ok(song) => {

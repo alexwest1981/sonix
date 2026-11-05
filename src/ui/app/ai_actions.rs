@@ -880,7 +880,9 @@ impl SonixApp {
     /// Lists the user's own Suno library on a background thread.
     pub fn suno_load_library(&mut self) {
         if self.suno_pending.is_some() {
-            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            // **En läsning som begärs medan något annat pågår köas**, inte tappas: arbetsytorna
+            // hämtas direkt efter inloggningen, och då ska listan ändå komma.
+            self.suno_library_wanted = true;
             return;
         }
         let query = self.suno_library_query.trim().to_string();
@@ -1109,6 +1111,9 @@ impl SonixApp {
                 self.suno_tools = tools;
                 // Arbetsytorna behövs för "Spara i": väljaren kan inte fyllas av gissningar.
                 self.suno_load_meta(SunoMeta::Workspaces);
+                // **Och låtarna: arbetsytan till höger ska vara fylld när appen öppnas**, som
+                // Sunos egen sida. Läsningen köas bakom arbetsytorna och kostar inga krediter.
+                self.suno_load_library();
                 self.suno_tool_name = tool_name;
                 // The server's schema decides the fields, but a value typed before sign-in is not
                 // thrown away: it is carried over by field name.
@@ -1167,6 +1172,8 @@ impl SonixApp {
             Ok(SunoTask::Library(songs)) => {
                 self.suno_status = crate::tstatus!("☀ {} songs in the library.", songs.len());
                 self.suno_library = songs;
+                // Omslagen beställs nu, inte när panelen ritar listan.
+                self.suno_prefetch_covers();
             }
             Err(error) => {
                 self.suno_signed_in = false;

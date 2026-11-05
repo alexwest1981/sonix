@@ -45,6 +45,32 @@ enum SpendStep {
     Confirm,
 }
 
+/// **Dagrubriken över en lista med låtar.** Dagens datum sägs som "Idag" — jämförelsen görs mot
+/// systemklockan i UTC, samma zon som serverns tidsstämplar, så rubriken aldrig ljuger.
+fn day_label(day: &str) -> String {
+    let today = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or(0);
+    let stamp = |y: i64, m: i64, d: i64| -> i64 {
+        // Civil-from-days (Howard Hinnant): dagar sedan 1970-01-01 för ett datum i UTC.
+        let y = if m <= 2 { y - 1 } else { y };
+        let era = if y >= 0 { y } else { y - 399 } / 400;
+        let yoe = y - era * 400;
+        let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        era * 146_097 + doe - 719_468
+    };
+    let parsed = day
+        .split('-')
+        .filter_map(|part| part.parse::<i64>().ok())
+        .collect::<Vec<_>>();
+    if parsed.len() == 3 && stamp(parsed[0], parsed[1], parsed[2]) == today as i64 {
+        return crate::i18n::t("Idag").to_string();
+    }
+    day.to_string()
+}
+
 fn credit_step(armed: Option<&str>, what: SunoSpend, id: &str) -> SpendStep {
     match armed.and_then(|value| value.split_once(':')) {
         Some((tag, armed_id)) if tag == what.tag() && armed_id == id => SpendStep::Confirm,
@@ -64,7 +90,67 @@ fn step_after_click(armed: &mut Option<String>, what: SunoSpend, id: &str) -> Sp
 }
 
 impl SonixApp {
+    /// **Tre kolumner, som Sunos egen sida:** menyn till vänster, skapandet i mitten och
+    /// arbetsytan till höger — så att låtarna syns medan man skriver nästa.
     pub(crate) fn render_suno_view(&mut self, ui: &mut egui::Ui) {
+        self.suno_poll_covers(ui.ctx());
+        self.suno_header(ui);
+        // Adressen syns medan inloggningen väntar — en GUI-app har ingen terminal att läsa den ur.
+        let login_url = self
+            .suno_login_url
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .unwrap_or_default();
+        if self.suno_pending.is_some() && !login_url.is_empty() {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(crate::i18n::t(
+                        "Öppna den här adressen om webbläsaren inte öppnades:",
+                    ))
+                    .size(Theme::FONT_S)
+                    .color(palette().text_muted()),
+                );
+                let mut shown = login_url.clone();
+                ui.add(
+                    egui::TextEdit::singleline(&mut shown)
+                        .desired_width(420.0)
+                        .font(egui::TextStyle::Monospace),
+                );
+                if ui.button(crate::i18n::t("🌐 Öppna igen")).clicked() {
+                    let _ = crate::platform::open_url(&login_url);
+                }
+            });
+        }
+        ui.separator();
+
+        let height = ui.available_height();
+        let rail = 128.0;
+        let workspace = 372.0;
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                Vec2::new(rail, height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| self.suno_nav_rail(ui),
+            );
+            ui.separator();
+            let centre = (ui.available_width() - workspace - 16.0).max(300.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(centre, height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| self.suno_centre(ui),
+            );
+            ui.separator();
+            ui.allocate_ui_with_layout(
+                Vec2::new(workspace, height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| self.suno_workspace_column(ui),
+            );
+        });
+    }
+
+    /// Rubriken: namn, läge, krediter och den senaste repliken från servern.
+    fn suno_header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("☀ SUNO")
@@ -72,7 +158,6 @@ impl SonixApp {
                     .size(Theme::FONT_L)
                     .color(palette().orange()),
             );
-            ui.separator();
             if self.suno_pending.is_some() {
                 ui.spinner();
             }
@@ -96,25 +181,16 @@ impl SonixApp {
             {
                 self.suno_connect_silently();
             }
-            // Skapa-knappen sitter i huvudraden: den får aldrig hamna under vikningen.
-            if ui
-                .add_enabled(
-                    self.suno_pending.is_none(),
-                    egui::Button::new(
-                        RichText::new(crate::i18n::t("✨ Skapa"))
-                            .strong()
-                            .color(egui::Color32::BLACK),
-                    )
-                    .fill(palette().orange())
-                    .min_size(Vec2::new(140.0, 26.0)),
-                )
-                .clicked()
-            {
-                self.suno_tab = 0;
-                self.suno_create();
+            // **Krediterna står i huvudet, inte som en överraskning i knappen.** Två pooler:
+            // nedladdningar (som en hämtning tar ur) och genereringar.
+            if let Some(credits) = self.suno_account.as_ref().and_then(|a| a.credits) {
+                ui.label(
+                    RichText::new(crate::tstatus!("⬇ {} nedladdningar", credits as i64))
+                        .size(Theme::FONT_XS)
+                        .color(palette().text_muted()),
+                );
             }
             if !self.suno_status.trim().is_empty() {
-                // Long statuses are cut off in the header row; the full line stays on hover.
                 let _ = ui
                     .add(
                         egui::Label::new(
@@ -127,66 +203,409 @@ impl SonixApp {
                     .on_hover_text(&self.suno_status);
             }
         });
-        // Adressen syns medan inloggningen väntar — en GUI-app har ingen terminal att läsa den ur.
-        let login_url = self
-            .suno_login_url
+    }
+
+    /// Vänstermenyn: en rad per ruta, den aktiva med fylld bakgrund.
+    fn suno_nav_rail(&mut self, ui: &mut egui::Ui) {
+        for (index, label) in TABS.iter().enumerate() {
+            let active = self.suno_tab == index;
+            let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_S);
+            let text = if active {
+                text.strong().color(palette().text())
+            } else {
+                text.color(palette().text_muted())
+            };
+            let fill = if active {
+                palette().panel()
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            if ui
+                .add(
+                    egui::Button::new(text)
+                        .fill(fill)
+                        .min_size(Vec2::new(112.0, 26.0)),
+                )
+                .clicked()
+            {
+                self.suno_tab = index;
+            }
+        }
+    }
+
+    /// Mittkolumnen: rutan som är vald, och Skapa-knappen längst ned i full bredd.
+    fn suno_centre(&mut self, ui: &mut egui::Ui) {
+        let bottom = 44.0;
+        let height = (ui.available_height() - bottom).max(120.0);
+        ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match self.suno_tab {
+                        0 => self.suno_tab_create(ui),
+                        1 => self.suno_tab_voices(ui),
+                        2 => self.suno_tab_library(ui),
+                        3 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Playlists),
+                        4 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Workspaces),
+                        _ => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Account),
+                    });
+            },
+        );
+        // **Skapa-knappen sitter längst ned, i full bredd** — det är den handling hela rutan
+        // finns för, och hos Suno är det den enda knappen som lyser.
+        let width = ui.available_width();
+        let enabled = self.suno_pending.is_none() && self.suno_tab == 0;
+        if ui
+            .add_enabled(
+                enabled,
+                egui::Button::new(
+                    RichText::new(crate::i18n::t("♫ Skapa"))
+                        .strong()
+                        .size(Theme::FONT_M)
+                        .color(egui::Color32::BLACK),
+                )
+                .fill(palette().orange())
+                .min_size(Vec2::new(width, 32.0)),
+            )
+            .clicked()
+        {
+            self.suno_create();
+        }
+    }
+
+    /// **Omslagen kommer från servern.** De hämtas en gång per adress i en egen tråd och
+    /// läggs som textur — en rad som ritas om 60 gånger i sekunden får aldrig hämta en bild.
+    fn suno_poll_covers(&mut self, ctx: &egui::Context) {
+        let finished: Vec<(String, egui::ColorImage)> = self
+            .suno_cover_rx
             .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
+            .map(|mut queue| queue.drain(..).collect())
             .unwrap_or_default();
-        if self.suno_pending.is_some() && !login_url.is_empty() {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(crate::i18n::t("Öppna den här adressen om webbläsaren inte öppnades:"))
-                        .size(Theme::FONT_S)
-                        .color(palette().text_muted()),
-                );
-                let mut shown = login_url.clone();
-                ui.add(
-                    egui::TextEdit::singleline(&mut shown)
-                        .desired_width(520.0)
-                        .font(egui::TextStyle::Monospace),
-                );
-                if ui.button(crate::i18n::t("🌐 Öppna igen")).clicked() {
-                    let _ = crate::platform::open_url(&login_url);
+        for (url, image) in finished {
+            let texture = ctx.load_texture(&url, image, egui::TextureOptions::LINEAR);
+            self.suno_covers.insert(url, texture);
+        }
+    }
+
+    /// Texturen för en bildadress, eller `None` medan den hämtas (då ritas en platshållare).
+    fn suno_cover_texture(&mut self, url: &str) -> Option<egui::TextureHandle> {
+        if let Some(texture) = self.suno_covers.get(url) {
+            return Some(texture.clone());
+        }
+        self.suno_spawn_cover(url);
+        None
+    }
+
+    /// **Omslagen beställs när listan kommer**, inte först när panelen ritar den — då hinner
+    /// bilderna bli färdiga innan ytan öppnas.
+    pub(crate) fn suno_prefetch_covers(&mut self) {
+        let urls: Vec<String> = self
+            .suno_library
+            .iter()
+            .filter_map(|song| song.cover_url.clone())
+            .take(60)
+            .collect();
+        for url in urls {
+            if !self.suno_covers.contains_key(&url) {
+                self.suno_spawn_cover(&url);
+            }
+        }
+    }
+
+    /// Startar en hämtning av en bild, en gång per adress.
+    fn suno_spawn_cover(&mut self, url: &str) {
+        if self.suno_cover_tries.insert(url.to_string()) {
+            let url = url.to_string();
+            let sink = self.suno_cover_rx.clone();
+            std::thread::spawn(move || {
+                let agent = ureq::AgentBuilder::new()
+                    .timeout(std::time::Duration::from_secs(20))
+                    .build();
+                let response = match agent.get(&url).call() {
+                    Ok(response) => response,
+                    Err(error) => {
+                        println!("suno: omslaget föll på hämtningen ({error})");
+                        return;
+                    }
+                };
+                let mut bytes = Vec::new();
+                {
+                    use std::io::Read;
+                    if response
+                        .into_reader()
+                        .take(4_000_000)
+                        .read_to_end(&mut bytes)
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                let decoded = match image::load_from_memory(&bytes) {
+                    Ok(decoded) => decoded,
+                    Err(error) => {
+                        println!("suno: omslaget gick inte att avkoda ({error})");
+                        return;
+                    }
+                };
+                let rgba = decoded.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let image = egui::ColorImage::from_rgba_unmultiplied(size, &rgba.into_raw());
+                if let Ok(mut queue) = sink.lock() {
+                    queue.push((url, image));
                 }
             });
         }
-
-        // Flikraden. Ett klick byter ruta; ingen modal ligger ovanpå något annat.
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            for (index, label) in TABS.iter().enumerate() {
-                let active = self.suno_tab == index;
-                let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_S);
-                let text = if active {
-                    text.strong().color(palette().bg())
-                } else {
-                    text.color(palette().text_muted())
-                };
-                let fill = if active {
-                    palette().orange()
-                } else {
-                    palette().panel()
-                };
-                if ui.add(egui::Button::new(text).fill(fill)).clicked() {
-                    self.suno_tab = index;
-                }
-            }
-        });
-        ui.separator();
-
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.suno_tab {
-                0 => self.suno_tab_create(ui),
-                1 => self.suno_tab_voices(ui),
-                2 => self.suno_tab_library(ui),
-                3 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Playlists),
-                4 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Workspaces),
-                _ => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Account),
-            });
     }
+
+    /// **Högerkolumnen: arbetsytan.** Sökfält, dagrubriker och en rad per låt med omslag,
+    /// titel, stil och de två handlingarna — som Sunos egen lista.
+    fn suno_workspace_column(&mut self, ui: &mut egui::Ui) {
+        let pending = self.suno_pending.is_some();
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(crate::i18n::t("Min arbetsyta"))
+                    .strong()
+                    .size(Theme::FONT_M),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add_enabled(!pending, egui::Button::new(crate::i18n::t("🔄")))
+                    .on_hover_text(crate::i18n::t("Hämta biblioteket igen"))
+                    .clicked()
+                {
+                    self.suno_load_library();
+                }
+                ui.label(
+                    RichText::new(format!("{}", self.suno_library.len()))
+                        .size(Theme::FONT_XS)
+                        .color(palette().text_muted()),
+                );
+            });
+        });
+        ui.add(
+            egui::TextEdit::singleline(&mut self.suno_library_query)
+                .desired_width(f32::INFINITY)
+                .hint_text(crate::i18n::t("Sök")),
+        );
+        ui.add_space(6.0);
+
+        struct Row {
+            id: String,
+            title: String,
+            style: String,
+            description: String,
+            duration: String,
+            cover: Option<String>,
+            has_file: bool,
+            day: String,
+        }
+        let query = self.suno_library_query.trim().to_lowercase();
+        let rows: Vec<Row> = self
+            .suno_library
+            .iter()
+            .filter(|song| {
+                query.is_empty()
+                    || song.title.to_lowercase().contains(&query)
+                    || song
+                        .style
+                        .as_deref()
+                        .is_some_and(|s| s.to_lowercase().contains(&query))
+                    || song
+                        .description
+                        .as_deref()
+                        .is_some_and(|s| s.to_lowercase().contains(&query))
+            })
+            .map(|song| Row {
+                id: song.id.clone(),
+                title: song.title.clone(),
+                style: song.style.clone().unwrap_or_default(),
+                description: song.description.clone().unwrap_or_default(),
+                duration: song
+                    .duration_secs
+                    .map(|d| format!("{}:{:02}", (d as u64) / 60, (d as u64) % 60))
+                    .unwrap_or_default(),
+                cover: song.cover_url.clone(),
+                has_file: self.suno_clips.iter().any(|clip| {
+                    clip.id == song.id && clip.file.as_ref().is_some_and(|f| f.exists())
+                }),
+                day: song
+                    .created
+                    .as_deref()
+                    .map(|c| c.chars().take(10).collect())
+                    .unwrap_or_default(),
+            })
+            .collect();
+        if rows.is_empty() {
+            ui.label(
+                RichText::new(crate::i18n::t("Inga låtar här än — hämta biblioteket med 🔄."))
+                    .size(Theme::FONT_S)
+                    .color(palette().text_muted()),
+            );
+            return;
+        }
+        let mut play: Option<usize> = None;
+        let mut import: Option<usize> = None;
+        let mut last_day = String::new();
+        for (index, row) in rows.iter().enumerate() {
+            if row.day != last_day {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(if row.day.is_empty() {
+                        crate::i18n::t("Tidigare").to_string()
+                    } else {
+                        day_label(&row.day)
+                    })
+                    .size(Theme::FONT_XS)
+                    .color(palette().text_muted()),
+                );
+                last_day = row.day.clone();
+            }
+            egui::Frame::none()
+                .fill(palette().panel())
+                .rounding(6.0)
+                .inner_margin(6.0)
+                .show(ui, |ui| {
+                    ui.horizontal_top(|ui| {
+                        // Omslaget, eller en platshållare med titelns första bokstav.
+                        match row
+                            .cover
+                            .as_ref()
+                            .and_then(|url| self.suno_cover_texture(url))
+                        {
+                            Some(texture) => {
+                                ui.add(
+                                    egui::Image::new((texture.id(), Vec2::splat(48.0)))
+                                        .rounding(4.0),
+                                );
+                            }
+                            None => {
+                                let (rect, _) = ui.allocate_exact_size(
+                                    Vec2::splat(48.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().rect_filled(rect, 4.0, palette().bg());
+                                let initial = row
+                                    .title
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.to_uppercase().to_string())
+                                    .unwrap_or_default();
+                                ui.painter().text(
+                                    rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    initial,
+                                    egui::FontId::proportional(20.0),
+                                    palette().text_muted(),
+                                );
+                            }
+                        }
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(&row.title)
+                                        .strong()
+                                        .size(Theme::FONT_S)
+                                        .color(palette().text()),
+                                );
+                                if !row.duration.is_empty() {
+                                    ui.label(
+                                        RichText::new(&row.duration)
+                                            .size(Theme::FONT_XS)
+                                            .color(palette().text_muted()),
+                                    );
+                                }
+                            });
+                            if !row.style.is_empty() {
+                                // **Stilen är en hel prompt** (mätt: sex rader), inte en tagg —
+                                // en rad i orange, hela texten på hover.
+                                let short = if row.style.chars().count() > 52 {
+                                    format!("{}…", row.style.chars().take(52).collect::<String>())
+                                } else {
+                                    row.style.clone()
+                                };
+                                let _ = ui
+                                    .add(
+                                        egui::Label::new(
+                                            RichText::new(short)
+                                                .size(Theme::FONT_XS)
+                                                .color(palette().orange()),
+                                        )
+                                        .truncate(),
+                                    )
+                                    .on_hover_text(&row.style);
+                            }
+                            if !row.description.is_empty() {
+                                // **Två rader, inte en vägg av text.** Beskrivningen är en
+                                // hel prompt; hela texten står i hover-texten.
+                                let short = if row.description.chars().count() > 96 {
+                                    format!("{}…", row.description.chars().take(96).collect::<String>())
+                                } else {
+                                    row.description.clone()
+                                };
+                                // **En rad, som hos Suno** — beskrivningen är en hel prompt och
+                                // skulle annars äta hela kolumnen. Hela texten på hover.
+                                let _ = ui
+                                    .add(
+                                        egui::Label::new(
+                                            RichText::new(short)
+                                                .size(Theme::FONT_XS)
+                                                .color(palette().text_muted()),
+                                        )
+                                        .truncate(),
+                                    )
+                                    .on_hover_text(&row.description);
+                            }
+                            ui.horizontal(|ui| {
+                                // **En hämtning kostar en kredit — en uppspelning av en fil
+                                // som redan ligger på disk kostar ingenting.**
+                                if row.has_file {
+                                    if ui
+                                        .add_enabled(
+                                            !pending,
+                                            egui::Button::new(crate::i18n::t("▶ Spela")),
+                                        )
+                                        .on_hover_text(crate::i18n::t(
+                                            "Filen ligger redan på disk — ingen kredit går åt",
+                                        ))
+                                        .clicked()
+                                    {
+                                        play = Some(index);
+                                    }
+                                } else if self.suno_spend_button(
+                                    ui,
+                                    !pending,
+                                    SunoSpend::Play,
+                                    &row.id,
+                                    crate::i18n::t("▶ Lyssna — 1 kredit"),
+                                ) {
+                                    play = Some(index);
+                                }
+                                if self.suno_spend_button(
+                                    ui,
+                                    !pending,
+                                    SunoSpend::Import,
+                                    &row.id,
+                                    crate::i18n::t("📥 Importera"),
+                                ) {
+                                    import = Some(index);
+                                }
+                            });
+                        });
+                    });
+                });
+            ui.add_space(4.0);
+        }
+        if let Some(index) = play {
+            self.suno_play_library(index);
+        }
+        if let Some(index) = import {
+            let id = rows[index].id.clone();
+            self.suno_import_confirmed(&id);
+        }
+    }
+
 
 
     /// Listan som knapparna Audio/Voice/Inspo fäller ut, på plats i rutan.

@@ -373,6 +373,18 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Min arbetsyta" => "My workspace",
+        "Hämta biblioteket igen" => "Fetch the library again",
+        "Sök" => "Search",
+        "Inga låtar här än — hämta biblioteket med 🔄." => "No songs here yet — fetch the library with 🔄.",
+        "Tidigare" => "Earlier",
+        "Idag" => "Today",
+        "♫ Skapa" => "♫ Create",
+        "⬇ {} nedladdningar" => "⬇ {} downloads",
+        "▶ Spela" => "▶ Play",
+        "▶ Lyssna — 1 kredit" => "▶ Listen — 1 credit",
+        "📥 Importera" => "📥 Import",
+
         "☀ Inloggad på Suno" => "☀ Signed in to Suno",
         "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Not signed in to Suno — sign in under Settings → AI",
         "☀ Kontrollerar Suno-inloggningen…" => "☀ Checking the Suno sign-in…",
@@ -1779,7 +1791,6 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Yabridge-mål (synkade .so)" => "Yabridge target (synced .so)",
         "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)" => "Windows VST3/VST2 in a Wine prefix (Native Instruments et al.)",
         "📚 Instrumentbibliotek" => "📚 Instrument library",
-        "📥 Importera" => "📥 Import",
         "Lägger det valda presetets zoner i kanalens keymap." => "Puts the chosen preset's zones into the channel's keymap.",
         "🧬 Wavetable som källa" => "🧬 Wavetable as source",
         "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster." => "Plays the built-in wavetable from keys, MIDI and clips instead of the synth voices.",
@@ -3090,6 +3101,18 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Min arbetsyta" => "Min arbejdsflade",
+        "Hämta biblioteket igen" => "Hent biblioteket igen",
+        "Sök" => "Søg",
+        "Inga låtar här än — hämta biblioteket med 🔄." => "Ingen sange her endnu — hent biblioteket med 🔄.",
+        "Tidigare" => "Tidligere",
+        "Idag" => "I dag",
+        "♫ Skapa" => "♫ Opret",
+        "⬇ {} nedladdningar" => "⬇ {} downloads",
+        "▶ Spela" => "▶ Afspil",
+        "▶ Lyssna — 1 kredit" => "▶ Lyt — 1 kredit",
+        "📥 Importera" => "📥 Importer",
+
         "☀ Inloggad på Suno" => "☀ Logget ind på Suno",
         "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Ikke logget ind på Suno — log ind i Indstillinger → AI",
         "☀ Kontrollerar Suno-inloggningen…" => "☀ Kontrollerer Suno-login…",
@@ -4461,7 +4484,6 @@ fn tr_da(key: &str) -> Option<&'static str> {
         "Yabridge-mål (synkade .so)" => "Yabridge-mål (synkroniserede .so)",
         "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)" => "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)",
         "📚 Instrumentbibliotek" => "📚 Instrumentbibliotek",
-        "📥 Importera" => "📥 Importer",
         "Lägger det valda presetets zoner i kanalens keymap." => "Lægger det valgte presets zoner i kanalens keymap.",
         "🧬 Wavetable som källa" => "🧬 Wavetable som kilde",
         "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster." => "Spiller den indbyggede wavetable fra tastatur, MIDI og klip i stedet for synthens stemmer.",
@@ -5765,6 +5787,18 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Min arbetsyta" => "Min arbeidsflate",
+        "Hämta biblioteket igen" => "Hent biblioteket på nytt",
+        "Sök" => "Søk",
+        "Inga låtar här än — hämta biblioteket med 🔄." => "Ingen sanger her ennå — hent biblioteket med 🔄.",
+        "Tidigare" => "Tidligere",
+        "Idag" => "I dag",
+        "♫ Skapa" => "♫ Lag",
+        "⬇ {} nedladdningar" => "⬇ {} nedlastinger",
+        "▶ Spela" => "▶ Spill",
+        "▶ Lyssna — 1 kredit" => "▶ Lytt — 1 kreditt",
+        "📥 Importera" => "📥 Importer",
+
         "☀ Inloggad på Suno" => "☀ Logget inn på Suno",
         "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Ikke logget inn på Suno — logg inn i Innstillinger → AI",
         "☀ Kontrollerar Suno-inloggningen…" => "☀ Sjekker Suno-innloggingen…",
@@ -7136,7 +7170,6 @@ fn tr_no(key: &str) -> Option<&'static str> {
         "Yabridge-mål (synkade .so)" => "Yabridge-mål (synkroniserte .so)",
         "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)" => "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)",
         "📚 Instrumentbibliotek" => "📚 Instrumentbibliotek",
-        "📥 Importera" => "📥 Importer",
         "Lägger det valda presetets zoner i kanalens keymap." => "Legger det valgte presetets soner i kanalens keymap.",
         "🧬 Wavetable som källa" => "🧬 Wavetable som kilde",
         "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster." => "Spiller den innebygde wavetablen fra tastatur, MIDI og klipp i stedet for synthens stemmer.",
@@ -8440,6 +8473,18 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Min arbetsyta" => "Mein Arbeitsbereich",
+        "Hämta biblioteket igen" => "Bibliothek erneut laden",
+        "Sök" => "Suchen",
+        "Inga låtar här än — hämta biblioteket med 🔄." => "Noch keine Songs — Bibliothek mit 🔄 laden.",
+        "Tidigare" => "Früher",
+        "Idag" => "Heute",
+        "♫ Skapa" => "♫ Erstellen",
+        "⬇ {} nedladdningar" => "⬇ {} Downloads",
+        "▶ Spela" => "▶ Abspielen",
+        "▶ Lyssna — 1 kredit" => "▶ Anhören — 1 Guthaben",
+        "📥 Importera" => "📥 Importieren",
+
         "☀ Inloggad på Suno" => "☀ Bei Suno angemeldet",
         "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Nicht bei Suno angemeldet — unter Einstellungen → KI anmelden",
         "☀ Kontrollerar Suno-inloggningen…" => "☀ Suno-Anmeldung wird geprüft…",
@@ -9811,7 +9856,6 @@ fn tr_de(key: &str) -> Option<&'static str> {
         "Yabridge-mål (synkade .so)" => "Yabridge-Ziel (synchronisierte .so)",
         "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)" => "Windows VST3/VST2 im Wine-Prefix (Native Instruments u. a.)",
         "📚 Instrumentbibliotek" => "📚 Instrumentbibliothek",
-        "📥 Importera" => "📥 Importieren",
         "Lägger det valda presetets zoner i kanalens keymap." => "Legt die Zonen des gewählten Presets in die Keymap des Kanals.",
         "🧬 Wavetable som källa" => "🧬 Wavetable als Quelle",
         "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster." => "Spielt die eingebaute Wavetable über Tastatur, MIDI und Clips statt der Synth-Stimmen.",
@@ -11115,6 +11159,18 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Min arbetsyta" => "Mi espacio de trabajo",
+        "Hämta biblioteket igen" => "Volver a cargar la biblioteca",
+        "Sök" => "Buscar",
+        "Inga låtar här än — hämta biblioteket med 🔄." => "Aún no hay canciones — carga la biblioteca con 🔄.",
+        "Tidigare" => "Antes",
+        "Idag" => "Hoy",
+        "♫ Skapa" => "♫ Crear",
+        "⬇ {} nedladdningar" => "⬇ {} descargas",
+        "▶ Spela" => "▶ Reproducir",
+        "▶ Lyssna — 1 kredit" => "▶ Escuchar — 1 crédito",
+        "📥 Importera" => "📥 Importar",
+
         "☀ Inloggad på Suno" => "☀ Sesión iniciada en Suno",
         "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Sin sesión en Suno — inicia sesión en Ajustes → IA",
         "☀ Kontrollerar Suno-inloggningen…" => "☀ Comprobando la sesión de Suno…",
@@ -12486,7 +12542,6 @@ fn tr_es(key: &str) -> Option<&'static str> {
         "Yabridge-mål (synkade .so)" => "Destino Yabridge (.so sincronizados)",
         "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)" => "VST3/VST2 de Windows en prefijo Wine (Native Instruments y otros)",
         "📚 Instrumentbibliotek" => "📚 Biblioteca de instrumentos",
-        "📥 Importera" => "📥 Importar",
         "Lägger det valda presetets zoner i kanalens keymap." => "Coloca las zonas del preset elegido en el keymap del canal.",
         "🧬 Wavetable som källa" => "🧬 Wavetable como fuente",
         "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster." => "Toca la wavetable integrada con teclado, MIDI y clips en lugar de las voces del sinte.",
@@ -13790,6 +13845,18 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Min arbetsyta" => "Mon espace de travail",
+        "Hämta biblioteket igen" => "Recharger la bibliothèque",
+        "Sök" => "Rechercher",
+        "Inga låtar här än — hämta biblioteket med 🔄." => "Aucune chanson — charge la bibliothèque avec 🔄.",
+        "Tidigare" => "Plus tôt",
+        "Idag" => "Aujourd'hui",
+        "♫ Skapa" => "♫ Créer",
+        "⬇ {} nedladdningar" => "⬇ {} téléchargements",
+        "▶ Spela" => "▶ Lire",
+        "▶ Lyssna — 1 kredit" => "▶ Écouter — 1 crédit",
+        "📥 Importera" => "📥 Importer",
+
         "☀ Inloggad på Suno" => "☀ Connecté à Suno",
         "☀ Inte inloggad på Suno — logga in i Inställningar → AI" => "☀ Non connecté à Suno — connecte-toi dans Réglages → IA",
         "☀ Kontrollerar Suno-inloggningen…" => "☀ Vérification de la connexion Suno…",
@@ -15161,7 +15228,6 @@ fn tr_fr(key: &str) -> Option<&'static str> {
         "Yabridge-mål (synkade .so)" => "Cible Yabridge (.so synchronisés)",
         "Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)" => "VST3/VST2 Windows dans un préfixe Wine (Native Instruments et autres)",
         "📚 Instrumentbibliotek" => "📚 Bibliothèque d'instruments",
-        "📥 Importera" => "📥 Importer",
         "Lägger det valda presetets zoner i kanalens keymap." => "Place les zones du preset choisi dans le keymap du canal.",
         "🧬 Wavetable som källa" => "🧬 Wavetable comme source",
         "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster." => "Joue la wavetable intégrée au clavier, en MIDI et depuis les clips au lieu des voix du synthé.",
@@ -16462,6 +16528,40 @@ fn tr_fr(key: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    /// **En dubblerad nyckel gör en `match`-arm oåtkomlig**, och då fäller CI:s nollvarningsgrind
+    /// hela bygget — det hände två gånger samma dag (först `Status:`, sedan `📥 Importera`).
+    /// Provet säger vilken tabell och vilken nyckel, innan bygget hinner säga det.
+    #[test]
+    fn no_table_lists_the_same_key_twice() {
+        let source = include_str!("i18n.rs");
+        for lang in ["en", "da", "no", "de", "es", "fr"] {
+            let head = format!("fn tr_{lang}(key: &str) -> Option<&'static str> {{");
+            let start = source
+                .find(&head)
+                .unwrap_or_else(|| panic!("tabell {lang} saknas"));
+            let rest = &source[start..];
+            // Tabellen slutar där nästa toppnivåfunktion börjar — inte vid första `}`.
+            let end = rest[1..].find("\nfn ").map(|i| i + 1).unwrap_or(rest.len());
+            let mut seen = std::collections::HashSet::new();
+            for line in rest[..end].lines() {
+                let line = line.trim();
+                let Some(body) = line.strip_prefix('"') else {
+                    continue;
+                };
+                let Some(close) = body.find("\" => \"") else {
+                    continue;
+                };
+                let key = &body[..close];
+                assert!(
+                    seen.insert(key),
+                    "nyckeln {key:?} står två gånger i tabellen för {lang}"
+                );
+            }
+            assert!(!seen.is_empty(), "tabellen för {lang} lästes tom");
+        }
+    }
+
+
     use super::*;
 
     fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {

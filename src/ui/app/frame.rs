@@ -448,6 +448,12 @@ impl SonixApp {
         self.poll_suno();
         self.poll_stem_separation();
         self.poll_stem_split();
+        // **En Suno-läsning som begärdes medan något annat pågick får sin tur här** — oavsett
+        // vilken vy som är öppen, annars väntar arbetsytan på att panelen ska bli synlig.
+        if self.suno_library_wanted && self.suno_pending.is_none() {
+            self.suno_library_wanted = false;
+            self.suno_load_library();
+        }
     }
 
     /// Klockan och husbytet för en bildruta: sequencern, automationen, animationsfasen,

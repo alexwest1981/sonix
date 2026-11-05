@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Suno-ytan är omgjord till tre kolumner, som Sunos egen skaparsida:** menyn till vänster,
+  formuläret i mitten med **Skapa-knappen i full bredd längst ned**, och **arbetsytan alltid
+  synlig till höger** — omslag, titel, speltid, stil och beskrivning per låt, grupperat per dag
+  ("Idag" / datum), med sökfält, ▶ Lyssna och 📥 Importera på varje rad.
+- **Omslagen hämtas och cachas** (en gång per bildadress, i egen tråd, inget nytt beroende —
+  `image`-craten fick bara jpeg-stöd). Låten visas med sin riktiga bild i stället för en tom ruta.
+- **Biblioteket läses vid start**, så arbetsytan är fylld när appen öppnas.
+- **Speltiden läses ur `metadata.duration`** (den låg inte på raden, så listan saknade längd helt)
+  och kan vara `"3:50"` eller sekunder.
+
 - **Suno-inloggningen bor i Inställningar → AI och sker tyst vid start.** Appen kontrollerar
   sparade tokens i bakgrunden när den startar och förnyar access-token ur refresh-token —
   **utan att öppna en webbläsare**. Går det inte står det "inte inloggad" i inställningarna, och
