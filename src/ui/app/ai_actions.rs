@@ -716,6 +716,43 @@ fn saved_clip_file(clips: &[crate::ui::app::SunoClip], id: &str) -> Option<std::
         .filter(|file| file.exists())
 }
 
+/// **Handlar felet om sessionen?** Bara då får panelen säga "inte inloggad". Ett avvisat
+/// skapande (400, kredit, ogiltigt fält) lämnar sessionen orörd.
+fn looks_signed_out(error: &str) -> bool {
+    let error = error.to_lowercase();
+    [
+        "401",
+        "unauthor",
+        "expired",
+        "token",
+        "sign in",
+        "signed out",
+        "not signed",
+        "authentication",
+    ]
+    .iter()
+    .any(|needle| error.contains(needle))
+}
+
+#[cfg(test)]
+mod sign_out_tests {
+    use super::looks_signed_out;
+
+    #[test]
+    fn a_rejected_creation_is_not_a_signed_out_session() {
+        assert!(!looks_signed_out("invalid_request: invalid request body"));
+        assert!(!looks_signed_out("suno: the server has no tool `audio-create`"));
+        assert!(!looks_signed_out("suno: the download reply carried no audio url"));
+        // Ett riktigt sessionsfel ska fortfarande synas som utloggad.
+        assert!(looks_signed_out(
+            "the saved tokens could not be refreshed: 401"
+        ));
+        assert!(looks_signed_out(
+            "no saved Suno tokens — sign in from the panel once"
+        ));
+    }
+}
+
 impl SonixApp {
     /// **Det panelen behöver veta om en session.** Ett ställe, så den tysta starten och ett
     /// uttryckligt "logga in" ger panelen samma svar.
@@ -1372,14 +1409,21 @@ impl SonixApp {
                 self.suno_prefetch_covers();
             }
             Err(error) => {
-                self.suno_signed_in = false;
-                // **Ett misslyckande vid start får inte se ut som att appen väntar på en
-                // webbläsare.** Den säger var inloggningen bor, och ingenting öppnas.
-                self.suno_status = if self.suno_silent {
+                // **Ett misslyckat skapande är inte en utloggning.** Den här raden satte
+                // flaggan på *varje* fel, så ett avvisat anrop såg ut som en död session:
+                // skapa → "utloggad" → Kontrollera igen → inloggad → skapa → "utloggad"
+                // (Alex 2026-11-05). Nu fälls flaggan bara när felet handlar om sessionen.
+                println!("suno: anropet föll: {error}");
+                let signed_out = looks_signed_out(&error);
+                if signed_out {
+                    self.suno_signed_in = false;
+                }
+                self.suno_status = if self.suno_silent && signed_out {
                     crate::i18n::t("☀ Inte inloggad på Suno — logga in i Inställningar → AI")
                         .to_string()
                 } else {
-                    error
+                    // Felet står kvar som det är: det är det enda som säger *varför*.
+                    crate::tstatus!("⚠ {}", error)
                 };
             }
         }
